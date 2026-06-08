@@ -18,28 +18,32 @@ export default async function handler(req, res) {
     const GROQ_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
     const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
-    const prompt = `You are an AI exam solver. Given the images of an exam, your task is to provide the correct answers in a **very specific clean format**.
+    const prompt = `You are an expert German language examiner. The user provides images of an exam. Your task is to answer every question correctly.
 
-**RULES:**
-- For each question, repeat the question text exactly as printed (including numbers or letters like "a.", "b.", "1.", "2.").
-- On the next line, write "A: " followed by the correct answer.
-- Do NOT use any markdown (no asterisks, no hashtags, no bold).
-- Do NOT add extra words like "Answer:" – just "A: ".
-- Keep the original question numbering and sub-letters.
-- For fill-in-the-blank, show the blank as "_____" in the question, then the filled word in the answer.
-- For true/false, answer with "Richtig" or "Falsch".
-- For verb conjugation, give the correct form.
-- Separate each question-answer pair with a blank line.
+**CRITICAL RULES:**
+- Output the question text exactly as printed (including numbers, letters a., b., etc.).
+- On the next line write "A: " followed by the correct answer.
+- No extra text, no markdown (no **, no ##, no *).
+- For imperative (Imperativ) questions: Use the formal "Sie" form.
+    - Example: "die Zwiebeln dazugeben" → "Geben Sie die Zwiebeln dazu."
+    - "die Kartoffeln schälen" → "Schälen Sie die Kartoffeln."
+    - "den Kuchen backen" → "Backen Sie den Kuchen."
+    - "die Suppe kochen" → "Kochen Sie die Suppe."
+    - "den Salat mischen" → "Mischen Sie den Salat."
+- For perfect tense (Perfekt): Provide the past participle.
+    - kochen → gekocht, backen → gebacken, schneiden → geschnitten, trinken → getrunken, essen → gegessen.
+- For true/false: "Richtig" or "Falsch".
+- For fill-in-the-blanks: Insert the correct word from the given list.
+- Preserve the original numbering and sub‑letters (a., b., c., etc.).
+- Separate each Q/A pair with exactly one blank line.
 
 **EXAMPLE OUTPUT:**
-1. Was ist die Hauptstadt von Frankreich?
-A: Paris
+2. Schreiben Sie die Sätze in der Imperativ-Sie-Form auf.
+a. die Zwiebeln dazugeben
+A: Geben Sie die Zwiebeln dazu.
 
-2. Ergänze: Morgens macht er ein _____.
-A: Frühstück
-
-3. Murat war in Bodrum. (Richtig/Falsch)
-A: Richtig
+b. die Kartoffeln schälen
+A: Schälen Sie die Kartoffeln.
 
 Now process the two exam page images. Follow the format exactly.`;
 
@@ -70,11 +74,9 @@ Now process the two exam page images. Follow the format exactly.`;
         });
 
         const data = await response.json();
-
         if (!response.ok) {
             console.error('Groq API error:', data);
-            const errorMessage = data.error?.message || 'Unknown error from Groq API';
-            return res.status(response.status).json({ error: `Groq API error: ${errorMessage}` });
+            return res.status(response.status).json({ error: data.error?.message || 'Groq API error' });
         }
 
         const extractedText = data.choices?.[0]?.message?.content;
@@ -84,7 +86,7 @@ Now process the two exam page images. Follow the format exactly.`;
 
         return res.status(200).json({ extractedText });
     } catch (error) {
-        console.error('Server error calling Groq:', error);
+        console.error('Server error:', error);
         return res.status(500).json({ error: 'Internal server error: ' + error.message });
     }
 }
