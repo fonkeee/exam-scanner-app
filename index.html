@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Exam Scanner</title>
+    <title>Exam Scanner Pro</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -28,10 +28,16 @@
                 <span class="icon">⟳</span>
                 <span class="label">Reset</span>
             </button>
+            <!-- New: Upload button -->
+            <label id="uploadBtn" class="tab-btn upload">
+                <span class="icon">📁</span>
+                <span class="label">Upload</span>
+                <input type="file" id="uploadInput" accept="image/jpeg,image/png,image/jpg" style="display: none;">
+            </label>
         </div>
     </div>
 
-    <!-- Simple status message (no toasts, just a small bar) -->
+    <!-- Simple status bar -->
     <div id="statusMsg" class="status-bar">📷 Ready</div>
 
     <!-- Full-screen modal for answers -->
