@@ -186,3 +186,13 @@ video {
     white-space: pre-wrap;
     word-wrap: break-word;
 }
+
+/* Copy button in modal */
+#copyResultBtn {
+    background: rgba(255,255,255,0.15);
+    transition: 0.1s;
+}
+#copyResultBtn:active {
+    transform: scale(0.95);
+    background: rgba(255,255,255,0.3);
+}
