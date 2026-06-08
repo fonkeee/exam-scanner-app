@@ -12,16 +12,16 @@ const resultText = document.getElementById('resultText');
 const closeModalBtn = document.getElementById('closeModalBtn');
 
 let stream = null;
-let page1Image = null;   // dataURL
+let page1Image = null;
 let page2Image = null;
-let currentPage = 1;      // 1 or 2
+let currentPage = 1;
 
 // ========== Debug logging ==========
 function debugLog(...args) {
     console.log("[DEBUG]", ...args);
 }
 
-// ========== Toast system (fixed) ==========
+// ========== Toast system ==========
 let toastTimeout = null;
 function showToast(message, duration = 3000, isError = false) {
     debugLog("showToast:", message, duration, isError);
@@ -41,7 +41,6 @@ function showToast(message, duration = 3000, isError = false) {
     }, duration);
 }
 
-// Simple status bar (small)
 function setStatus(msg, isError = false) {
     debugLog("setStatus:", msg, isError);
     statusMsg.innerText = msg;
@@ -74,7 +73,7 @@ async function setupCamera() {
     }
 }
 
-// ========== Image enhancement (strong) ==========
+// ========== Image enhancement ==========
 function enhanceImage(sourceCanvas) {
     return new Promise((resolve) => {
         debugLog("Enhancing image...");
@@ -84,7 +83,6 @@ function enhanceImage(sourceCanvas) {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(sourceCanvas, 0, 0);
         
-        // Contrast & brightness
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageData.data;
         const contrast = 1.6;
@@ -96,7 +94,6 @@ function enhanceImage(sourceCanvas) {
         }
         ctx.putImageData(imageData, 0, 0);
         
-        // Sharpen kernel
         const sharpenCanvas = document.createElement('canvas');
         sharpenCanvas.width = canvas.width;
         sharpenCanvas.height = canvas.height;
@@ -130,7 +127,6 @@ function enhanceImage(sourceCanvas) {
     });
 }
 
-// Capture from camera
 async function captureFullFrame() {
     if (!video.videoWidth || !video.videoHeight) {
         debugLog("Video dimensions not ready");
@@ -142,8 +138,7 @@ async function captureFullFrame() {
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const enhanced = await enhanceImage(canvas);
-    return enhanced;
+    return await enhanceImage(canvas);
 }
 
 // ========== File upload handler ==========
@@ -156,7 +151,6 @@ function handleUpload(event) {
     reader.onload = async function(e) {
         const dataUrl = e.target.result;
         debugLog("File loaded, dataURL length:", dataUrl.length);
-        // Enhance the uploaded image (same as camera)
         const img = new Image();
         img.onload = async () => {
             const canvas = document.createElement('canvas');
@@ -174,7 +168,7 @@ function handleUpload(event) {
                 currentPage = 2;
                 setStatus("✅ Page 1 uploaded. Now upload Page 2.");
                 showToast("Page 1 uploaded! Now upload Page 2.", 2000);
-            } else if (currentPage === 2) {
+            } else {
                 page2Image = enhanced;
                 scanPage2Btn.disabled = true;
                 scanPage2Btn.style.opacity = '0.5';
@@ -187,7 +181,6 @@ function handleUpload(event) {
         img.src = dataUrl;
     };
     reader.readAsDataURL(file);
-    // Reset file input so same file can be re-uploaded if needed
     uploadInput.value = '';
 }
 
@@ -226,7 +219,7 @@ async function capturePage() {
     }
 }
 
-// ========== Send to Gemini (with loading toast) ==========
+// ========== Send to Gemini ==========
 async function sendToGemini() {
     if (!page1Image || !page2Image) {
         setStatus("Both pages required.", true);
@@ -310,10 +303,6 @@ uploadInput.onchange = handleUpload;
 
 // Start camera
 window.addEventListener('load', setupCamera);
-
-// Cleanup
 window.addEventListener('beforeunload', () => {
-    if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-    }
+    if (stream) stream.getTracks().forEach(track => track.stop());
 });
