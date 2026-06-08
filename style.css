@@ -22,7 +22,6 @@ h1 {
     text-align: center;
     color: #1a73e8;
     margin-top: 0;
-    font-size: 1.8rem;
 }
 
 .camera-wrapper {
@@ -34,7 +33,7 @@ h1 {
     aspect-ratio: 4 / 3;
 }
 
-video, #outlineCanvas {
+video, #guideCanvas {
     position: absolute;
     top: 0;
     left: 0;
@@ -43,8 +42,8 @@ video, #outlineCanvas {
     object-fit: cover;
 }
 
-#outlineCanvas {
-    pointer-events: none;  /* So canvas doesn't block clicks */
+#guideCanvas {
+    pointer-events: none;
     z-index: 2;
 }
 
@@ -88,19 +87,17 @@ video, #outlineCanvas {
     cursor: not-allowed;
 }
 
-.status, .guidance {
+.status, .quality-feedback {
     background: #e8f0fe;
     padding: 12px;
     border-radius: 12px;
     margin: 10px 0;
     font-size: 14px;
-    text-align: center;
 }
 
-.guidance {
+.quality-feedback {
     background: #fff3e0;
     color: #b85c00;
-    font-weight: 500;
 }
 
 .result {
