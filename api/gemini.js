@@ -37,7 +37,7 @@ Extract **only the questions and their corresponding answers** from these pages.
 `;
 
     // Use a model that exists in your list: gemini-2.0-flash-lite (fast, stable, free)
-    const MODEL_NAME = 'models/gemini-2.0-flash-lite';
+    const MODEL_NAME = 'models/gemini-3.1-flash-lite-preview';
 
     const requestBody = {
         contents: [
