@@ -110,7 +110,7 @@ function enhanceImage(sourceCanvas) {
             }
         }
         sCtx.putImageData(dst, 0, 0);
-        resolve(sharpenCanvas.toDataURL('image/jpeg', 0.9));
+        resolve(sharpenCanvas.toDataURL('image/jpeg', 0.95));
     });
 }
 
