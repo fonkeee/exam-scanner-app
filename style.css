@@ -12,7 +12,6 @@ body {
     font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
-/* Camera full screen */
 .camera-container {
     position: fixed;
     top: 0;
@@ -28,7 +27,7 @@ video {
     object-fit: cover;
 }
 
-/* Bottom Tab Bar – glassmorphic dark */
+/* Bottom Tab Bar */
 .bottom-tab-bar {
     position: fixed;
     bottom: 0;
@@ -41,7 +40,6 @@ video {
     align-items: center;
     padding: 12px 16px 28px;
     border-top: 0.5px solid rgba(255,255,255,0.1);
-    box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
     z-index: 100;
 }
 
@@ -54,9 +52,14 @@ video {
     gap: 6px;
     padding: 8px 16px;
     border-radius: 40px;
-    transition: 0.2s;
     cursor: pointer;
     opacity: 0.7;
+    transition: 0.1s;
+}
+
+.tab-btn:active {
+    transform: scale(0.95);
+    background: rgba(255,255,255,0.1);
 }
 
 .tab-btn .icon {
@@ -75,41 +78,27 @@ video {
 .tab-btn.success .icon { color: #4caf50; }
 .tab-btn.reset .icon { color: #ff6b6b; }
 
-.tab-btn:active {
-    transform: scale(0.95);
-    background: rgba(255,255,255,0.1);
-}
-
 .tab-btn:disabled {
     opacity: 0.3;
     transform: none;
     cursor: not-allowed;
 }
 
-/* Toast messages */
-.status-toast, .quality-toast {
+/* Simple status bar (bottom of screen, above tab bar) */
+.status-bar {
     position: fixed;
-    top: 60px;
+    bottom: 85px;
     left: 50%;
     transform: translateX(-50%);
-    background: rgba(0,0,0,0.8);
-    backdrop-filter: blur(12px);
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(10px);
     color: white;
-    padding: 12px 20px;
-    border-radius: 40px;
+    padding: 8px 16px;
+    border-radius: 30px;
     font-size: 14px;
-    font-weight: 500;
     z-index: 200;
     white-space: nowrap;
     pointer-events: none;
-    transition: opacity 0.2s;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    border: 0.5px solid rgba(255,255,255,0.2);
-}
-
-.quality-toast {
-    top: 120px;
-    background: rgba(255,100,100,0.9);
 }
 
 /* Full-screen modal */
@@ -124,7 +113,6 @@ video {
     z-index: 1000;
     display: flex;
     flex-direction: column;
-    animation: fadeIn 0.2s ease;
 }
 
 .result-modal.hidden {
@@ -155,7 +143,6 @@ video {
     border-radius: 40px;
     font-size: 24px;
     cursor: pointer;
-    transition: 0.2s;
 }
 
 .close-modal:active {
@@ -171,15 +158,9 @@ video {
 
 .modal-body pre {
     color: #e0e0e0;
-    font-family: 'SF Mono', 'Courier New', monospace;
+    font-family: monospace;
     font-size: 16px;
     line-height: 1.5;
     white-space: pre-wrap;
     word-wrap: break-word;
-    margin: 0;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
 }
