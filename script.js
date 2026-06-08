@@ -1,54 +1,36 @@
-// DOM elements
+// ========== DOM elements ==========
 const video = document.getElementById('cameraFeed');
 const scanPage1Btn = document.getElementById('scanPage1Btn');
 const scanPage2Btn = document.getElementById('scanPage2Btn');
 const submitBtn = document.getElementById('submitBtn');
 const resetBtn = document.getElementById('resetBtn');
+const uploadInput = document.getElementById('uploadInput');
+const uploadBtn = document.getElementById('uploadBtn');
 const statusMsg = document.getElementById('statusMsg');
 const resultModal = document.getElementById('resultModal');
 const resultText = document.getElementById('resultText');
 const closeModalBtn = document.getElementById('closeModalBtn');
 
 let stream = null;
-let page1Image = null;
+let page1Image = null;   // dataURL
 let page2Image = null;
-let currentPage = 1;
+let currentPage = 1;      // 1 or 2
 
-// Simple status update (small bar)
-function setStatus(msg, isError = false) {
-    statusMsg.innerText = msg;
-    statusMsg.style.background = isError ? 'rgba(200,50,50,0.9)' : 'rgba(0,0,0,0.7)';
-    if (!isError) {
-        setTimeout(() => {
-            if (statusMsg.innerText === msg) statusMsg.innerText = "📷 Ready";
-        }, 2000);
-    }
+// ========== Debug logging ==========
+function debugLog(...args) {
+    console.log("[DEBUG]", ...args);
 }
 
-// ---------- Toast system (popup that fades) ----------
+// ========== Toast system (fixed) ==========
 let toastTimeout = null;
 function showToast(message, duration = 3000, isError = false) {
-    // Create or reuse toast element
+    debugLog("showToast:", message, duration, isError);
     let toast = document.getElementById('dynamicToast');
     if (!toast) {
         toast = document.createElement('div');
         toast.id = 'dynamicToast';
-        toast.style.position = 'fixed';
-        toast.style.bottom = '140px';
-        toast.style.left = '50%';
-        toast.style.transform = 'translateX(-50%)';
-        toast.style.backgroundColor = isError ? 'rgba(200,50,50,0.95)' : 'rgba(0,0,0,0.85)';
-        toast.style.color = 'white';
-        toast.style.padding = '10px 20px';
-        toast.style.borderRadius = '40px';
-        toast.style.fontSize = '14px';
-        toast.style.fontWeight = '500';
-        toast.style.zIndex = '300';
-        toast.style.backdropFilter = 'blur(10px)';
-        toast.style.whiteSpace = 'nowrap';
-        toast.style.pointerEvents = 'none';
-        toast.style.fontFamily = 'system-ui, sans-serif';
         document.body.appendChild(toast);
+        debugLog("Created toast element");
     }
     toast.style.backgroundColor = isError ? 'rgba(200,50,50,0.95)' : 'rgba(0,0,0,0.85)';
     toast.innerText = message;
@@ -59,8 +41,21 @@ function showToast(message, duration = 3000, isError = false) {
     }, duration);
 }
 
-// Camera setup (simple, working)
+// Simple status bar (small)
+function setStatus(msg, isError = false) {
+    debugLog("setStatus:", msg, isError);
+    statusMsg.innerText = msg;
+    statusMsg.style.background = isError ? 'rgba(200,50,50,0.9)' : 'rgba(0,0,0,0.7)';
+    if (!isError) {
+        setTimeout(() => {
+            if (statusMsg.innerText === msg) statusMsg.innerText = "📷 Ready";
+        }, 2000);
+    }
+}
+
+// ========== Camera Setup ==========
 async function setupCamera() {
+    debugLog("setupCamera called");
     setStatus("Requesting camera...");
     try {
         const constraints = { video: { facingMode: "environment" } };
@@ -69,33 +64,20 @@ async function setupCamera() {
         await video.play();
         const track = stream.getVideoTracks()[0];
         const settings = track.getSettings();
-        console.log("Camera ready:", settings.width, "x", settings.height);
+        debugLog("Camera ready:", settings.width, "x", settings.height);
         setStatus("✅ Camera ready");
         showToast("Camera ready. Tap Page 1 to scan.", 2000);
     } catch (err) {
-        console.error("Camera error:", err);
+        debugLog("Camera error:", err);
         setStatus("❌ Camera error: " + err.message, true);
         showToast("Camera error: " + err.message, 4000, true);
     }
 }
 
-// Capture and enhance (keep existing)
-async function captureFullFrame() {
-    if (!video.videoWidth || !video.videoHeight) {
-        setStatus("Camera not ready", true);
-        return null;
-    }
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const enhanced = await enhanceImage(canvas);
-    return enhanced;
-}
-
+// ========== Image enhancement (strong) ==========
 function enhanceImage(sourceCanvas) {
     return new Promise((resolve) => {
+        debugLog("Enhancing image...");
         const canvas = document.createElement('canvas');
         canvas.width = sourceCanvas.width;
         canvas.height = sourceCanvas.height;
@@ -114,7 +96,7 @@ function enhanceImage(sourceCanvas) {
         }
         ctx.putImageData(imageData, 0, 0);
         
-        // Sharpen
+        // Sharpen kernel
         const sharpenCanvas = document.createElement('canvas');
         sharpenCanvas.width = canvas.width;
         sharpenCanvas.height = canvas.height;
@@ -144,16 +126,79 @@ function enhanceImage(sourceCanvas) {
         }
         sCtx.putImageData(dst, 0, 0);
         resolve(sharpenCanvas.toDataURL('image/jpeg', 0.95));
+        debugLog("Image enhancement done");
     });
 }
 
-// Capture page (unchanged logic)
+// Capture from camera
+async function captureFullFrame() {
+    if (!video.videoWidth || !video.videoHeight) {
+        debugLog("Video dimensions not ready");
+        return null;
+    }
+    debugLog("Capturing full frame", video.videoWidth, video.videoHeight);
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const enhanced = await enhanceImage(canvas);
+    return enhanced;
+}
+
+// ========== File upload handler ==========
+function handleUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    debugLog("Uploading file:", file.name, file.type, file.size);
+    showToast("Processing uploaded image...", 2000);
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+        const dataUrl = e.target.result;
+        debugLog("File loaded, dataURL length:", dataUrl.length);
+        // Enhance the uploaded image (same as camera)
+        const img = new Image();
+        img.onload = async () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            const enhanced = await enhanceImage(canvas);
+            if (currentPage === 1) {
+                page1Image = enhanced;
+                scanPage1Btn.disabled = true;
+                scanPage1Btn.style.opacity = '0.5';
+                scanPage2Btn.disabled = false;
+                scanPage2Btn.style.opacity = '1';
+                currentPage = 2;
+                setStatus("✅ Page 1 uploaded. Now upload Page 2.");
+                showToast("Page 1 uploaded! Now upload Page 2.", 2000);
+            } else if (currentPage === 2) {
+                page2Image = enhanced;
+                scanPage2Btn.disabled = true;
+                scanPage2Btn.style.opacity = '0.5';
+                submitBtn.disabled = false;
+                submitBtn.style.opacity = '1';
+                setStatus("✅ Page 2 uploaded. Ready to extract.");
+                showToast("Page 2 uploaded! Tap Extract.", 2000);
+            }
+        };
+        img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+    // Reset file input so same file can be re-uploaded if needed
+    uploadInput.value = '';
+}
+
+// ========== Capture page (camera) ==========
 async function capturePage() {
     if (!stream) {
         setStatus("Camera not started. Refresh and allow permissions.", true);
         showToast("Camera not ready. Please refresh.", 3000, true);
         return;
     }
+    debugLog("capturePage called, currentPage:", currentPage);
     setStatus(`Capturing Page ${currentPage}...`);
     const captured = await captureFullFrame();
     if (!captured) {
@@ -161,7 +206,6 @@ async function capturePage() {
         showToast("Capture failed. Tap again.", 2000, true);
         return;
     }
-    
     if (currentPage === 1) {
         page1Image = captured;
         scanPage1Btn.disabled = true;
@@ -182,20 +226,18 @@ async function capturePage() {
     }
 }
 
-// Send to Gemini with loading toast and detailed error handling
+// ========== Send to Gemini (with loading toast) ==========
 async function sendToGemini() {
     if (!page1Image || !page2Image) {
         setStatus("Both pages required.", true);
-        showToast("Please capture both pages first.", 2500, true);
+        showToast("Please capture or upload both pages first.", 2500, true);
         return;
     }
+    debugLog("sendToGemini called");
     submitBtn.disabled = true;
     submitBtn.style.opacity = '0.5';
     setStatus("Sending to Gemini AI...");
-    
-    // Show persistent loading toast (will be replaced on success/error)
     showToast("⏳ Waiting for Gemini... (may take 15-30s)", 0);
-    
     const startTime = Date.now();
     let interval = setInterval(() => {
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
@@ -204,7 +246,6 @@ async function sendToGemini() {
             toast.innerText = `⏳ Gemini processing... ${elapsed}s`;
         }
     }, 1000);
-    
     try {
         const response = await fetch('/api/gemini', {
             method: 'POST',
@@ -213,27 +254,26 @@ async function sendToGemini() {
         });
         const data = await response.json();
         clearInterval(interval);
-        
         if (response.ok) {
+            debugLog("Gemini success, response length:", data.extractedText?.length);
             resultText.innerText = data.extractedText;
             resultModal.classList.remove('hidden');
             setStatus("✅ Extraction complete!");
             showToast("✅ Answers extracted! Check the modal.", 3000);
         } else {
-            // Error: show detailed message (may contain quota retry info)
+            debugLog("Gemini error:", data.error);
             const errorMsg = data.error || "Unknown error";
             setStatus("❌ Gemini error: " + errorMsg, true);
-            showToast("❌ " + errorMsg, 6000, true);
+            showToast("❌ " + errorMsg, 8000, true);
         }
     } catch (err) {
         clearInterval(interval);
-        console.error(err);
+        debugLog("Network error:", err);
         setStatus("❌ Network error: " + err.message, true);
         showToast("Network error: " + err.message, 5000, true);
     } finally {
         submitBtn.disabled = false;
         submitBtn.style.opacity = '1';
-        // If loading toast still showing, remove it after a short delay
         setTimeout(() => {
             const toast = document.getElementById('dynamicToast');
             if (toast && toast.innerText.startsWith('⏳')) {
@@ -244,6 +284,7 @@ async function sendToGemini() {
 }
 
 function resetApp() {
+    debugLog("resetApp");
     page1Image = null;
     page2Image = null;
     currentPage = 1;
@@ -264,6 +305,8 @@ scanPage2Btn.onclick = capturePage;
 submitBtn.onclick = sendToGemini;
 resetBtn.onclick = resetApp;
 closeModalBtn.onclick = () => resultModal.classList.add('hidden');
+uploadBtn.onclick = () => uploadInput.click();
+uploadInput.onchange = handleUpload;
 
 // Start camera
 window.addEventListener('load', setupCamera);
