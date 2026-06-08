@@ -11,6 +11,27 @@ const resultModal = document.getElementById('resultModal');
 const resultText = document.getElementById('resultText');
 const closeModalBtn = document.getElementById('closeModalBtn');
 
+// Create copy button dynamically if not exists
+let copyBtn = document.getElementById('copyResultBtn');
+if (!copyBtn) {
+    copyBtn = document.createElement('button');
+    copyBtn.id = 'copyResultBtn';
+    copyBtn.innerText = '📋 Copy';
+    copyBtn.style.background = 'rgba(255,255,255,0.2)';
+    copyBtn.style.border = 'none';
+    copyBtn.style.color = 'white';
+    copyBtn.style.padding = '8px 16px';
+    copyBtn.style.borderRadius = '40px';
+    copyBtn.style.fontSize = '14px';
+    copyBtn.style.cursor = 'pointer';
+    copyBtn.style.marginLeft = 'auto';
+    const header = document.querySelector('.modal-header');
+    if (header) {
+        const existingBtn = header.querySelector('#copyResultBtn');
+        if (!existingBtn) header.appendChild(copyBtn);
+    }
+}
+
 let stream = null;
 let page1Image = null;
 let page2Image = null;
@@ -30,6 +51,7 @@ function showToast(message, duration = 3000, isError = false) {
         toast = document.createElement('div');
         toast.id = 'dynamicToast';
         document.body.appendChild(toast);
+        debugLog("Created toast element");
     }
     toast.style.backgroundColor = isError ? 'rgba(200,50,50,0.95)' : 'rgba(0,0,0,0.85)';
     toast.innerText = message;
@@ -72,30 +94,20 @@ async function setupCamera() {
     }
 }
 
-// ========== Image enhancement with lower quality for mobile ==========
+// ========== Image enhancement ==========
 function enhanceImage(sourceCanvas) {
     return new Promise((resolve) => {
         debugLog("Enhancing image...");
         const canvas = document.createElement('canvas');
-        // Reduce size for mobile to avoid large payloads
-        const maxWidth = 1200;
-        const maxHeight = 1600;
-        let width = sourceCanvas.width;
-        let height = sourceCanvas.height;
-        if (width > maxWidth || height > maxHeight) {
-            const ratio = Math.min(maxWidth / width, maxHeight / height);
-            width = Math.floor(width * ratio);
-            height = Math.floor(height * ratio);
-        }
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = sourceCanvas.width;
+        canvas.height = sourceCanvas.height;
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(sourceCanvas, 0, 0, width, height);
+        ctx.drawImage(sourceCanvas, 0, 0);
         
-        const imageData = ctx.getImageData(0, 0, width, height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageData.data;
-        const contrast = 1.5;
-        const brightness = 10;
+        const contrast = 1.6;
+        const brightness = 15;
         for (let i = 0; i < data.length; i += 4) {
             data[i] = Math.min(255, Math.max(0, (data[i] - 128) * contrast + 128 + brightness));
             data[i+1] = Math.min(255, Math.max(0, (data[i+1] - 128) * contrast + 128 + brightness));
@@ -103,38 +115,36 @@ function enhanceImage(sourceCanvas) {
         }
         ctx.putImageData(imageData, 0, 0);
         
-        // Light sharpen
         const sharpenCanvas = document.createElement('canvas');
-        sharpenCanvas.width = width;
-        sharpenCanvas.height = height;
+        sharpenCanvas.width = canvas.width;
+        sharpenCanvas.height = canvas.height;
         const sCtx = sharpenCanvas.getContext('2d');
         sCtx.drawImage(canvas, 0, 0);
-        const src = sCtx.getImageData(0, 0, width, height);
-        const dst = sCtx.createImageData(width, height);
-        const kernel = [0, -1, 0, -1, 5, -1, 0, -1, 0];
-        for (let y = 1; y < height-1; y++) {
-            for (let x = 1; x < width-1; x++) {
+        const src = sCtx.getImageData(0, 0, canvas.width, canvas.height);
+        const dst = sCtx.createImageData(canvas.width, canvas.height);
+        const kernel = [-1, -1, -1, -1, 9, -1, -1, -1, -1];
+        for (let y = 1; y < canvas.height-1; y++) {
+            for (let x = 1; x < canvas.width-1; x++) {
                 let r = 0, g = 0, b = 0;
                 for (let ky = -1; ky <= 1; ky++) {
                     for (let kx = -1; kx <= 1; kx++) {
-                        const idx = ((y+ky)*width + (x+kx))*4;
+                        const idx = ((y+ky)*canvas.width + (x+kx))*4;
                         const w = kernel[(ky+1)*3 + (kx+1)];
                         r += src.data[idx] * w;
                         g += src.data[idx+1] * w;
                         b += src.data[idx+2] * w;
                     }
                 }
-                const didx = (y*width + x)*4;
+                const didx = (y*canvas.width + x)*4;
                 dst.data[didx] = Math.min(255, Math.max(0, r));
                 dst.data[didx+1] = Math.min(255, Math.max(0, g));
                 dst.data[didx+2] = Math.min(255, Math.max(0, b));
-                dst.data[didx+3] = src.data[(y*width + x)*4 + 3];
+                dst.data[didx+3] = src.data[(y*canvas.width + x)*4 + 3];
             }
         }
         sCtx.putImageData(dst, 0, 0);
-        // Lower quality to reduce payload for mobile
-        resolve(sharpenCanvas.toDataURL('image/jpeg', 0.8));
-        debugLog("Image enhancement done, size reduced");
+        resolve(sharpenCanvas.toDataURL('image/jpeg', 0.95));
+        debugLog("Image enhancement done");
     });
 }
 
@@ -179,7 +189,7 @@ function handleUpload(event) {
                 currentPage = 2;
                 setStatus("✅ Page 1 uploaded. Now upload Page 2.");
                 showToast("Page 1 uploaded! Now upload Page 2.", 2000);
-            } else {
+            } else if (currentPage === 2) {
                 page2Image = enhanced;
                 scanPage2Btn.disabled = true;
                 scanPage2Btn.style.opacity = '0.5';
@@ -230,7 +240,7 @@ async function capturePage() {
     }
 }
 
-// ========== Send to Gemini with robust error handling ==========
+// ========== Send to Groq ==========
 async function sendToGemini() {
     if (!page1Image || !page2Image) {
         setStatus("Both pages required.", true);
@@ -240,14 +250,14 @@ async function sendToGemini() {
     debugLog("sendToGemini called");
     submitBtn.disabled = true;
     submitBtn.style.opacity = '0.5';
-    setStatus("Sending to Gemini AI...");
-    showToast("⏳ Waiting for Gemini... (may take 15-30s)", 0);
+    setStatus("Sending to Groq AI...");
+    showToast("⏳ Waiting for Groq... (may take 15-30s)", 0);
     const startTime = Date.now();
     let interval = setInterval(() => {
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
         const toast = document.getElementById('dynamicToast');
         if (toast && toast.style.opacity !== '0') {
-            toast.innerText = `⏳ Gemini processing... ${elapsed}s`;
+            toast.innerText = `⏳ Groq processing... ${elapsed}s`;
         }
     }, 1000);
     try {
@@ -256,40 +266,31 @@ async function sendToGemini() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ page1: page1Image, page2: page2Image })
         });
-        
-        // Check if response is JSON
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-            const text = await response.text();
-            debugLog("Non-JSON response:", text.substring(0, 200));
-            throw new Error(`Server returned ${response.status}: ${text.substring(0, 100)}`);
-        }
-        
         const data = await response.json();
         clearInterval(interval);
         if (response.ok) {
-            debugLog("Gemini success, response length:", data.extractedText?.length);
+            debugLog("Groq success, response length:", data.extractedText?.length);
             resultText.innerText = data.extractedText;
             resultModal.classList.remove('hidden');
             setStatus("✅ Extraction complete!");
-            showToast("✅ Answers extracted! Check the modal.", 3000);
+            showToast("✅ Answers extracted! You can copy them.", 3000);
         } else {
-            debugLog("Gemini error:", data.error);
+            debugLog("Groq error:", data.error);
             const errorMsg = data.error || "Unknown error";
-            setStatus("❌ Gemini error: " + errorMsg, true);
+            setStatus("❌ Groq error: " + errorMsg, true);
             showToast("❌ " + errorMsg, 8000, true);
         }
     } catch (err) {
         clearInterval(interval);
-        debugLog("Network/JSON error:", err);
+        debugLog("Network error:", err);
         setStatus("❌ Network error: " + err.message, true);
-        showToast("Error: " + err.message, 5000, true);
+        showToast("Network error: " + err.message, 5000, true);
     } finally {
         submitBtn.disabled = false;
         submitBtn.style.opacity = '1';
         setTimeout(() => {
             const toast = document.getElementById('dynamicToast');
-            if (toast && toast.innerText && toast.innerText.startsWith('⏳')) {
+            if (toast && toast.innerText.startsWith('⏳')) {
                 toast.style.opacity = '0';
             }
         }, 500);
@@ -312,13 +313,29 @@ function resetApp() {
     showToast("Reset. You can start over.", 1500);
 }
 
-// Event listeners
+// Copy button functionality
+function copyResult() {
+    const text = resultText.innerText;
+    if (!text) {
+        showToast("Nothing to copy.", 1500, true);
+        return;
+    }
+    navigator.clipboard.writeText(text).then(() => {
+        showToast("✅ Copied to clipboard!", 1500);
+    }).catch(err => {
+        console.error("Copy failed:", err);
+        showToast("Failed to copy. Select manually.", 2000, true);
+    });
+}
+
+// ========== Event listeners ==========
 scanPage1Btn.onclick = capturePage;
 scanPage2Btn.onclick = capturePage;
 submitBtn.onclick = sendToGemini;
 resetBtn.onclick = resetApp;
 closeModalBtn.onclick = () => resultModal.classList.add('hidden');
 uploadInput.onchange = handleUpload;
+if (copyBtn) copyBtn.onclick = copyResult;
 
 // Start camera
 window.addEventListener('load', setupCamera);
