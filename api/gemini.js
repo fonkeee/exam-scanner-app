@@ -18,27 +18,27 @@ export default async function handler(req, res) {
     const base64Page1 = page1.split(',')[1];
     const base64Page2 = page2.split(',')[1];
 
-    // CRITICAL: Force Gemini to extract student answers, even if messy
+    // New prompt: Solve the exam
     const prompt = `
-You are an AI that extracts **student answers** from exam papers. The images contain a mix of printed questions and handwritten/typed answers by the student.
+You are an expert exam solver. Look at the two exam page images. The pages contain **printed questions** (no handwritten answers). Your task is to **provide the correct answers** for every question.
 
-**YOUR TASK:** For each question, output the **student's answer** exactly as written (including incomplete sentences, abbreviations, or single words). Do NOT invent answers. If the answer is a checkmark, a cross, a circled option, or any mark, describe it (e.g., "✓", "✗", "circled A").
-
-**RULES:**
-- Ignore the printed question text when looking for the answer. The answer is **always** written by the student, usually after the question, below it, or in a blank space.
-- If the student wrote "gekocht" for "kochen", extract "gekocht".
-- If the student wrote nothing but left a blank line, output "[blank]".
-- If the student wrote only a checkmark or an X, output "✓" or "✗".
-- Do NOT output "[No answer given]" unless the space is completely empty and there is no mark at all.
-- For fill-in-the-blank exercises (e.g., "Morgens macht er ein ______"), look for the word the student inserted, either underlined or written in the blank.
+**INSTRUCTIONS:**
+- Read each question carefully.
+- For each question, output the correct answer.
+- If the question is multiple-choice, output the correct letter (A, B, C, etc.) and the text.
+- If the question requires a fill-in-the-blank, output the missing word(s).
+- If the question is true/false, output "Richtig" or "Falsch".
+- If the question asks for a verb conjugation (e.g., "kochen →"), output the correct form (e.g., "gekocht").
+- For open-ended questions, provide a concise, correct answer.
 
 **OUTPUT FORMAT:** 
+For each question, write exactly:
 Q: [question text as printed]
-A: [student's answer exactly as written]
+A: [correct answer]
 
-Use a blank line between each Q/A pair.
+Separate each Q/A pair with a blank line.
 
-**EXAMPLES OF GOOD EXTRACTION:**
+**EXAMPLE:**
 Q: kochen →
 A: gekocht
 
@@ -46,12 +46,14 @@ Q: Morgens macht er ein ______.
 A: Frühstück
 
 Q: Murat war in Bodrum. (Richtig/Falsch)
-A: ✓
+A: Richtig
 
-Now process the two exam page images provided. Look carefully at every handwritten mark, word, or checkmark.
+**DO NOT** include any extra text, explanations, or commentary. Only the Q/A pairs.
+
+Now process the two exam page images.
 `;
 
-    const MODEL_NAME = 'models/gemini-2.5-flash'; // or gemini-3.1-flash-lite-preview
+    const MODEL_NAME = 'models/gemini-2.0-flash'; // or gemini-2.5-flash
 
     const requestBody = {
         contents: [
@@ -64,9 +66,9 @@ Now process the two exam page images provided. Look carefully at every handwritt
             }
         ],
         generationConfig: {
-            temperature: 0.4,  // a bit more creative to interpret handwriting
+            temperature: 0.2,   // low for factual answers
             maxOutputTokens: 4096,
-            topP: 0.95
+            topP: 0.9
         }
     };
 
@@ -86,11 +88,12 @@ Now process the two exam page images provided. Look carefully at every handwritt
             return res.status(response.status).json({ error: data.error?.message || 'Gemini API error' });
         }
 
-        const extractedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        let extractedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!extractedText) {
             return res.status(500).json({ error: 'Empty response from Gemini' });
         }
 
+        extractedText = extractedText.replace(/```/g, '').trim();
         return res.status(200).json({ extractedText });
     } catch (error) {
         console.error('Server error:', error);
