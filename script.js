@@ -28,9 +28,15 @@ function setStatus(msg, isError = false) {
 
 // ---------- Camera Setup (simple, reliable) ----------
 async function setupCamera() {
-    setStatus("Requesting camera...");
-    try {
-        const constraints = { video: { facingMode: "environment" } };
+        setStatus("Requesting camera...");
+        try {
+            const constraints = {
+        video: {
+        facingMode: "environment",
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+            }    
+        };
         stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
         await video.play();
