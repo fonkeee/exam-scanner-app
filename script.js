@@ -12,13 +12,12 @@ const closeModalBtn = document.getElementById('closeModalBtn');
 let stream = null;
 let page1Image = null;
 let page2Image = null;
-let currentPage = 1;  // 1 or 2
+let currentPage = 1;
 
-// Simple status update
+// Simple status update (small bar)
 function setStatus(msg, isError = false) {
     statusMsg.innerText = msg;
     statusMsg.style.background = isError ? 'rgba(200,50,50,0.9)' : 'rgba(0,0,0,0.7)';
-    // Auto-clear after 2 seconds for non-errors? Optional
     if (!isError) {
         setTimeout(() => {
             if (statusMsg.innerText === msg) statusMsg.innerText = "📷 Ready";
@@ -26,17 +25,45 @@ function setStatus(msg, isError = false) {
     }
 }
 
-// ---------- Camera Setup (simple, reliable) ----------
+// ---------- Toast system (popup that fades) ----------
+let toastTimeout = null;
+function showToast(message, duration = 3000, isError = false) {
+    // Create or reuse toast element
+    let toast = document.getElementById('dynamicToast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'dynamicToast';
+        toast.style.position = 'fixed';
+        toast.style.bottom = '140px';
+        toast.style.left = '50%';
+        toast.style.transform = 'translateX(-50%)';
+        toast.style.backgroundColor = isError ? 'rgba(200,50,50,0.95)' : 'rgba(0,0,0,0.85)';
+        toast.style.color = 'white';
+        toast.style.padding = '10px 20px';
+        toast.style.borderRadius = '40px';
+        toast.style.fontSize = '14px';
+        toast.style.fontWeight = '500';
+        toast.style.zIndex = '300';
+        toast.style.backdropFilter = 'blur(10px)';
+        toast.style.whiteSpace = 'nowrap';
+        toast.style.pointerEvents = 'none';
+        toast.style.fontFamily = 'system-ui, sans-serif';
+        document.body.appendChild(toast);
+    }
+    toast.style.backgroundColor = isError ? 'rgba(200,50,50,0.95)' : 'rgba(0,0,0,0.85)';
+    toast.innerText = message;
+    toast.style.opacity = '1';
+    if (toastTimeout) clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => {
+        toast.style.opacity = '0';
+    }, duration);
+}
+
+// Camera setup (simple, working)
 async function setupCamera() {
-        setStatus("Requesting camera...");
-        try {
-            const constraints = {
-        video: {
-        facingMode: "environment",
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
-            }    
-        };
+    setStatus("Requesting camera...");
+    try {
+        const constraints = { video: { facingMode: "environment" } };
         stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
         await video.play();
@@ -44,13 +71,15 @@ async function setupCamera() {
         const settings = track.getSettings();
         console.log("Camera ready:", settings.width, "x", settings.height);
         setStatus("✅ Camera ready");
+        showToast("Camera ready. Tap Page 1 to scan.", 2000);
     } catch (err) {
         console.error("Camera error:", err);
         setStatus("❌ Camera error: " + err.message, true);
+        showToast("Camera error: " + err.message, 4000, true);
     }
 }
 
-// ---------- Capture Full Frame (no quality check, just capture & enhance) ----------
+// Capture and enhance (keep existing)
 async function captureFullFrame() {
     if (!video.videoWidth || !video.videoHeight) {
         setStatus("Camera not ready", true);
@@ -61,8 +90,6 @@ async function captureFullFrame() {
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    // Simple enhancement: contrast + brightness + sharpen (optional but helps OCR)
     const enhanced = await enhanceImage(canvas);
     return enhanced;
 }
@@ -78,8 +105,8 @@ function enhanceImage(sourceCanvas) {
         // Contrast & brightness
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageData.data;
-        const contrast = 1.3;
-        const brightness = 10;
+        const contrast = 1.6;
+        const brightness = 15;
         for (let i = 0; i < data.length; i += 4) {
             data[i] = Math.min(255, Math.max(0, (data[i] - 128) * contrast + 128 + brightness));
             data[i+1] = Math.min(255, Math.max(0, (data[i+1] - 128) * contrast + 128 + brightness));
@@ -87,7 +114,7 @@ function enhanceImage(sourceCanvas) {
         }
         ctx.putImageData(imageData, 0, 0);
         
-        // Sharpen kernel (light)
+        // Sharpen
         const sharpenCanvas = document.createElement('canvas');
         sharpenCanvas.width = canvas.width;
         sharpenCanvas.height = canvas.height;
@@ -95,13 +122,13 @@ function enhanceImage(sourceCanvas) {
         sCtx.drawImage(canvas, 0, 0);
         const src = sCtx.getImageData(0, 0, canvas.width, canvas.height);
         const dst = sCtx.createImageData(canvas.width, canvas.height);
-        const kernel = [0, -1, 0, -1, 5, -1, 0, -1, 0];
+        const kernel = [-1, -1, -1, -1, 9, -1, -1, -1, -1];
         for (let y = 1; y < canvas.height-1; y++) {
             for (let x = 1; x < canvas.width-1; x++) {
                 let r = 0, g = 0, b = 0;
                 for (let ky = -1; ky <= 1; ky++) {
                     for (let kx = -1; kx <= 1; kx++) {
-                        const idx = ((y+ky)*canvas.width + (x+kx)) * 4;
+                        const idx = ((y+ky)*canvas.width + (x+kx))*4;
                         const w = kernel[(ky+1)*3 + (kx+1)];
                         r += src.data[idx] * w;
                         g += src.data[idx+1] * w;
@@ -109,9 +136,9 @@ function enhanceImage(sourceCanvas) {
                     }
                 }
                 const didx = (y*canvas.width + x)*4;
-                dst.data[didx] = r;
-                dst.data[didx+1] = g;
-                dst.data[didx+2] = b;
+                dst.data[didx] = Math.min(255, Math.max(0, r));
+                dst.data[didx+1] = Math.min(255, Math.max(0, g));
+                dst.data[didx+2] = Math.min(255, Math.max(0, b));
                 dst.data[didx+3] = src.data[(y*canvas.width + x)*4 + 3];
             }
         }
@@ -120,16 +147,18 @@ function enhanceImage(sourceCanvas) {
     });
 }
 
-// ---------- Capture Page ----------
+// Capture page (unchanged logic)
 async function capturePage() {
     if (!stream) {
         setStatus("Camera not started. Refresh and allow permissions.", true);
+        showToast("Camera not ready. Please refresh.", 3000, true);
         return;
     }
     setStatus(`Capturing Page ${currentPage}...`);
     const captured = await captureFullFrame();
     if (!captured) {
         setStatus("Capture failed. Try again.", true);
+        showToast("Capture failed. Tap again.", 2000, true);
         return;
     }
     
@@ -141,6 +170,7 @@ async function capturePage() {
         scanPage2Btn.style.opacity = '1';
         currentPage = 2;
         setStatus("✅ Page 1 captured. Now scan Page 2.");
+        showToast("Page 1 captured! Now scan Page 2.", 2000);
     } else {
         page2Image = captured;
         scanPage2Btn.disabled = true;
@@ -148,18 +178,33 @@ async function capturePage() {
         submitBtn.disabled = false;
         submitBtn.style.opacity = '1';
         setStatus("✅ Page 2 captured. Ready to extract.");
+        showToast("Page 2 captured! Tap Extract.", 2000);
     }
 }
 
-// ---------- Send to Gemini ----------
+// Send to Gemini with loading toast and detailed error handling
 async function sendToGemini() {
     if (!page1Image || !page2Image) {
         setStatus("Both pages required.", true);
+        showToast("Please capture both pages first.", 2500, true);
         return;
     }
     submitBtn.disabled = true;
     submitBtn.style.opacity = '0.5';
     setStatus("Sending to Gemini AI...");
+    
+    // Show persistent loading toast (will be replaced on success/error)
+    showToast("⏳ Waiting for Gemini... (may take 15-30s)", 0);
+    
+    const startTime = Date.now();
+    let interval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const toast = document.getElementById('dynamicToast');
+        if (toast && toast.style.opacity !== '0') {
+            toast.innerText = `⏳ Gemini processing... ${elapsed}s`;
+        }
+    }, 1000);
+    
     try {
         const response = await fetch('/api/gemini', {
             method: 'POST',
@@ -167,21 +212,34 @@ async function sendToGemini() {
             body: JSON.stringify({ page1: page1Image, page2: page2Image })
         });
         const data = await response.json();
+        clearInterval(interval);
+        
         if (response.ok) {
             resultText.innerText = data.extractedText;
             resultModal.classList.remove('hidden');
             setStatus("✅ Extraction complete!");
+            showToast("✅ Answers extracted! Check the modal.", 3000);
         } else {
-            setStatus("❌ Gemini error: " + (data.error || "Unknown"), true);
-            resultText.innerText = "Error: " + (data.error || "Unknown");
-            resultModal.classList.remove('hidden');
+            // Error: show detailed message (may contain quota retry info)
+            const errorMsg = data.error || "Unknown error";
+            setStatus("❌ Gemini error: " + errorMsg, true);
+            showToast("❌ " + errorMsg, 6000, true);
         }
     } catch (err) {
-        setStatus("❌ Network error: " + err.message, true);
+        clearInterval(interval);
         console.error(err);
+        setStatus("❌ Network error: " + err.message, true);
+        showToast("Network error: " + err.message, 5000, true);
     } finally {
         submitBtn.disabled = false;
         submitBtn.style.opacity = '1';
+        // If loading toast still showing, remove it after a short delay
+        setTimeout(() => {
+            const toast = document.getElementById('dynamicToast');
+            if (toast && toast.innerText.startsWith('⏳')) {
+                toast.style.opacity = '0';
+            }
+        }, 500);
     }
 }
 
@@ -197,6 +255,7 @@ function resetApp() {
     submitBtn.style.opacity = '0.5';
     resultModal.classList.add('hidden');
     setStatus("Reset. Ready to scan.");
+    showToast("Reset. You can start over.", 1500);
 }
 
 // Event listeners
@@ -206,10 +265,10 @@ submitBtn.onclick = sendToGemini;
 resetBtn.onclick = resetApp;
 closeModalBtn.onclick = () => resultModal.classList.add('hidden');
 
-// Start camera when page loads
+// Start camera
 window.addEventListener('load', setupCamera);
 
-// Clean up on page unload
+// Cleanup
 window.addEventListener('beforeunload', () => {
     if (stream) {
         stream.getTracks().forEach(track => track.stop());
