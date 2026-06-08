@@ -26,21 +26,32 @@ export default async function handler(req, res) {
                 content: [
                     {
                         type: 'text',
-                        text: `You are an AI exam solver. Given the images of an exam, your task is to provide the correct answers to the questions.
+                        text: `You are an AI exam solver. Given the images of an exam, provide the correct answers for all questions.
 
-Identify each question and the area where the student was supposed to write the answer. Provide the correct answer next to the corresponding question.
+CRITICAL FORMATTING INSTRUCTIONS:
+- DO NOT use any markdown formatting like **bold**, *italic*, ### headings, or any other symbols.
+- DO NOT use asterisks (*), hashes (#), dashes (-), or backticks.
+- Output each question and its answer on its own line in plain text.
+- For each question, write exactly: "Q: [question text]" then on the next line "A: [correct answer]".
+- Separate each Q/A pair with a blank line.
+- Keep the output as clean plain text without any extra commentary.
 
-Output the questions and answers in a clear, numbered list. If it's a multiple-choice, fill-in-the-blank, true/false, or open-ended question, provide the correct answer as concisely as possible. For true/false, answer with "Richtig" or "Falsch".
+EXAMPLE:
+Q: Murat war in Bodrum.
+A: Richtig
 
-Directly provide the solved exam. Be complete and accurate.`
+Q: Er war allein dort.
+A: Falsch
+
+Now solve the exam from the provided images and output exactly in the format above.`
                     },
                     {
                         type: 'image_url',
-                        image_url: { url: page1 }   // page1 is already a data URL
+                        image_url: { url: page1 }
                     },
                     {
                         type: 'image_url',
-                        image_url: { url: page2 }   // page2 is already a data URL
+                        image_url: { url: page2 }
                     }
                 ]
             }
@@ -67,12 +78,9 @@ Directly provide the solved exam. Be complete and accurate.`
             return res.status(response.status).json({ error: `Groq API error: ${errorMessage}` });
         }
 
-        const extractedText = data.choices?.[0]?.message?.content;
-        if (!extractedText) {
-            console.error('Unexpected Groq response structure:', JSON.stringify(data, null, 2));
-            return res.status(500).json({ error: 'Groq returned an empty or unexpected response' });
-        }
-
+        let extractedText = data.choices?.[0]?.message?.content || '';
+        // Remove any remaining markdown artifacts (just in case)
+        extractedText = extractedText.replace(/\*\*/g, '').replace(/#{1,6}\s*/g, '').replace(/`/g, '');
         return res.status(200).json({ extractedText });
     } catch (error) {
         console.error('Server error calling Groq:', error);
