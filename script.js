@@ -11,26 +11,8 @@ const resultModal = document.getElementById('resultModal');
 const resultText = document.getElementById('resultText');
 const closeModalBtn = document.getElementById('closeModalBtn');
 
-// Create copy button dynamically if not exists
-let copyBtn = document.getElementById('copyResultBtn');
-if (!copyBtn) {
-    copyBtn = document.createElement('button');
-    copyBtn.id = 'copyResultBtn';
-    copyBtn.innerText = '📋 Copy';
-    copyBtn.style.background = 'rgba(255,255,255,0.2)';
-    copyBtn.style.border = 'none';
-    copyBtn.style.color = 'white';
-    copyBtn.style.padding = '8px 16px';
-    copyBtn.style.borderRadius = '40px';
-    copyBtn.style.fontSize = '14px';
-    copyBtn.style.cursor = 'pointer';
-    copyBtn.style.marginLeft = 'auto';
-    const header = document.querySelector('.modal-header');
-    if (header) {
-        const existingBtn = header.querySelector('#copyResultBtn');
-        if (!existingBtn) header.appendChild(copyBtn);
-    }
-}
+// Add a copy button dynamically (or you can add it in HTML)
+let copyBtn = null;
 
 let stream = null;
 let page1Image = null;
@@ -273,7 +255,7 @@ async function sendToGemini() {
             resultText.innerText = data.extractedText;
             resultModal.classList.remove('hidden');
             setStatus("✅ Extraction complete!");
-            showToast("✅ Answers extracted! You can copy them.", 3000);
+            showToast("✅ Answers extracted! Use Copy button to copy.", 3000);
         } else {
             debugLog("Groq error:", data.error);
             const errorMsg = data.error || "Unknown error";
@@ -297,6 +279,41 @@ async function sendToGemini() {
     }
 }
 
+// Copy to clipboard function
+function copyToClipboard() {
+    const text = resultText.innerText;
+    if (!text) {
+        showToast("Nothing to copy", 1500, true);
+        return;
+    }
+    navigator.clipboard.writeText(text).then(() => {
+        showToast("✅ Copied to clipboard!", 2000);
+    }).catch(err => {
+        console.error("Copy failed:", err);
+        showToast("❌ Copy failed. Select manually.", 2000, true);
+    });
+}
+
+// Add copy button to modal header
+function addCopyButton() {
+    const header = document.querySelector('.modal-header');
+    if (header && !document.getElementById('copyResultBtn')) {
+        const copyBtn = document.createElement('button');
+        copyBtn.id = 'copyResultBtn';
+        copyBtn.innerText = '📋 Copy';
+        copyBtn.style.background = 'rgba(255,255,255,0.2)';
+        copyBtn.style.border = 'none';
+        copyBtn.style.color = 'white';
+        copyBtn.style.padding = '8px 16px';
+        copyBtn.style.borderRadius = '40px';
+        copyBtn.style.fontSize = '14px';
+        copyBtn.style.marginLeft = 'auto';
+        copyBtn.style.cursor = 'pointer';
+        copyBtn.onclick = copyToClipboard;
+        header.appendChild(copyBtn);
+    }
+}
+
 function resetApp() {
     debugLog("resetApp");
     page1Image = null;
@@ -313,32 +330,19 @@ function resetApp() {
     showToast("Reset. You can start over.", 1500);
 }
 
-// Copy button functionality
-function copyResult() {
-    const text = resultText.innerText;
-    if (!text) {
-        showToast("Nothing to copy.", 1500, true);
-        return;
-    }
-    navigator.clipboard.writeText(text).then(() => {
-        showToast("✅ Copied to clipboard!", 1500);
-    }).catch(err => {
-        console.error("Copy failed:", err);
-        showToast("Failed to copy. Select manually.", 2000, true);
-    });
-}
-
-// ========== Event listeners ==========
+// Event listeners
 scanPage1Btn.onclick = capturePage;
 scanPage2Btn.onclick = capturePage;
 submitBtn.onclick = sendToGemini;
 resetBtn.onclick = resetApp;
 closeModalBtn.onclick = () => resultModal.classList.add('hidden');
 uploadInput.onchange = handleUpload;
-if (copyBtn) copyBtn.onclick = copyResult;
 
 // Start camera
-window.addEventListener('load', setupCamera);
+window.addEventListener('load', () => {
+    setupCamera();
+    addCopyButton();
+});
 window.addEventListener('beforeunload', () => {
     if (stream) stream.getTracks().forEach(track => track.stop());
 });
