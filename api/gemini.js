@@ -18,41 +18,40 @@ export default async function handler(req, res) {
     const GROQ_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
     const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
+    const prompt = `You are an AI exam solver. Given the images of an exam, your task is to provide the correct answers in a **very specific clean format**.
+
+**RULES:**
+- For each question, repeat the question text exactly as printed (including numbers or letters like "a.", "b.", "1.", "2.").
+- On the next line, write "A: " followed by the correct answer.
+- Do NOT use any markdown (no asterisks, no hashtags, no bold).
+- Do NOT add extra words like "Answer:" – just "A: ".
+- Keep the original question numbering and sub-letters.
+- For fill-in-the-blank, show the blank as "_____" in the question, then the filled word in the answer.
+- For true/false, answer with "Richtig" or "Falsch".
+- For verb conjugation, give the correct form.
+- Separate each question-answer pair with a blank line.
+
+**EXAMPLE OUTPUT:**
+1. Was ist die Hauptstadt von Frankreich?
+A: Paris
+
+2. Ergänze: Morgens macht er ein _____.
+A: Frühstück
+
+3. Murat war in Bodrum. (Richtig/Falsch)
+A: Richtig
+
+Now process the two exam page images. Follow the format exactly.`;
+
     const requestBody = {
         model: GROQ_MODEL,
         messages: [
             {
                 role: 'user',
                 content: [
-                    {
-                        type: 'text',
-                        text: `You are an AI exam solver. Given the images of an exam, provide the correct answers for all questions.
-
-CRITICAL FORMATTING INSTRUCTIONS:
-- DO NOT use any markdown formatting like **bold**, *italic*, ### headings, or any other symbols.
-- DO NOT use asterisks (*), hashes (#), dashes (-), or backticks.
-- Output each question and its answer on its own line in plain text.
-- For each question, write exactly: "Q: [question text]" then on the next line "A: [correct answer]".
-- Separate each Q/A pair with a blank line.
-- Keep the output as clean plain text without any extra commentary.
-
-EXAMPLE:
-Q: Murat war in Bodrum.
-A: Richtig
-
-Q: Er war allein dort.
-A: Falsch
-
-Now solve the exam from the provided images and output exactly in the format above.`
-                    },
-                    {
-                        type: 'image_url',
-                        image_url: { url: page1 }
-                    },
-                    {
-                        type: 'image_url',
-                        image_url: { url: page2 }
-                    }
+                    { type: 'text', text: prompt },
+                    { type: 'image_url', image_url: { url: page1 } },
+                    { type: 'image_url', image_url: { url: page2 } }
                 ]
             }
         ],
@@ -78,9 +77,11 @@ Now solve the exam from the provided images and output exactly in the format abo
             return res.status(response.status).json({ error: `Groq API error: ${errorMessage}` });
         }
 
-        let extractedText = data.choices?.[0]?.message?.content || '';
-        // Remove any remaining markdown artifacts (just in case)
-        extractedText = extractedText.replace(/\*\*/g, '').replace(/#{1,6}\s*/g, '').replace(/`/g, '');
+        const extractedText = data.choices?.[0]?.message?.content;
+        if (!extractedText) {
+            return res.status(500).json({ error: 'Empty response from Groq' });
+        }
+
         return res.status(200).json({ extractedText });
     } catch (error) {
         console.error('Server error calling Groq:', error);
