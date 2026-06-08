@@ -141,7 +141,7 @@ async function captureFullFrame() {
     return await enhanceImage(canvas);
 }
 
-// ========== File upload handler ==========
+// ========== File upload handler (fixed double open) ==========
 function handleUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -168,7 +168,7 @@ function handleUpload(event) {
                 currentPage = 2;
                 setStatus("✅ Page 1 uploaded. Now upload Page 2.");
                 showToast("Page 1 uploaded! Now upload Page 2.", 2000);
-            } else {
+            } else if (currentPage === 2) {
                 page2Image = enhanced;
                 scanPage2Btn.disabled = true;
                 scanPage2Btn.style.opacity = '0.5';
@@ -181,6 +181,7 @@ function handleUpload(event) {
         img.src = dataUrl;
     };
     reader.readAsDataURL(file);
+    // Reset input so same file can be uploaded again if needed
     uploadInput.value = '';
 }
 
@@ -292,13 +293,14 @@ function resetApp() {
     showToast("Reset. You can start over.", 1500);
 }
 
-// Event listeners
+// ========== Event listeners ==========
 scanPage1Btn.onclick = capturePage;
 scanPage2Btn.onclick = capturePage;
 submitBtn.onclick = sendToGemini;
 resetBtn.onclick = resetApp;
 closeModalBtn.onclick = () => resultModal.classList.add('hidden');
-uploadBtn.onclick = () => uploadInput.click();
+// IMPORTANT: No extra click handler on uploadBtn – the label element already opens file dialog.
+// Just listen to the input's change event.
 uploadInput.onchange = handleUpload;
 
 // Start camera
