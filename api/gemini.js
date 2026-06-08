@@ -58,6 +58,7 @@ Extract **only the questions and their corresponding answers** from these pages.
     };
 
     try {
+        console.log(`Using model: ${MODEL_NAME}`);
         const response = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/${MODEL_NAME}:generateContent?key=${GEMINI_API_KEY}`,
             {
