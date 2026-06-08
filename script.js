@@ -15,14 +15,14 @@ let page1Image = null;
 let page2Image = null;
 let currentPage = 1;
 
-// Toast helpers
+// Helper to show temporary toasts
 let statusTimeout, qualityTimeout;
 function showStatus(msg, isError = false) {
     if (statusTimeout) clearTimeout(statusTimeout);
     statusToast.style.opacity = '1';
     statusToast.innerText = msg;
     statusToast.style.background = isError ? 'rgba(200,50,50,0.9)' : 'rgba(0,0,0,0.8)';
-    statusTimeout = setTimeout(() => { statusToast.style.opacity = '0'; }, 2500);
+    statusTimeout = setTimeout(() => { statusToast.style.opacity = '0'; }, 3000);
 }
 function showQuality(msg) {
     if (qualityTimeout) clearTimeout(qualityTimeout);
@@ -31,42 +31,60 @@ function showQuality(msg) {
     qualityTimeout = setTimeout(() => { qualityToast.style.opacity = '0'; }, 2000);
 }
 
-// ---------- Camera Setup with fallback ----------
+// ---------- ULTRA SIMPLE CAMERA SETUP ----------
 async function setupCamera() {
+    showStatus("Requesting camera...");
     try {
-        // First try: high resolution with back camera
+        // Simplest possible constraints – no fancy resolutions, just back camera
         const constraints = {
-            video: {
-                facingMode: { exact: "environment" },
-                width: { min: 1280, ideal: 1920 },
-                height: { min: 720, ideal: 1080 }
-            }
+            video: { facingMode: "environment" }
         };
         stream = await navigator.mediaDevices.getUserMedia(constraints);
+        
+        // Important: set video source before playing
         video.srcObject = stream;
+        
+        // Wait for video to actually start playing
         await video.play();
+        
+        // Log success
         const track = stream.getVideoTracks()[0];
         const settings = track.getSettings();
-        console.log(`High-res camera: ${settings.width}x${settings.height}`);
-        showStatus(`📷 Camera ready (${settings.width}×${settings.height})`);
+        console.log("Camera active:", settings);
+        showStatus(`✅ Camera ready (${settings.width || '?'}×${settings.height || '?'})`);
+        
+        // Force a re-check of video dimensions after a short delay
+        setTimeout(() => {
+            if (video.videoWidth === 0) {
+                console.warn("Video dimensions still 0 – trying to reload");
+                video.play();
+            }
+        }, 500);
     } catch (err) {
-        console.warn("High-res failed, falling back:", err);
-        try {
-            // Fallback: default environment camera
-            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-            video.srcObject = stream;
-            await video.play();
-            const track = stream.getVideoTracks()[0];
-            const settings = track.getSettings();
-            showStatus(`📷 Camera ready (${settings.width}×${settings.height})`);
-        } catch (e) {
-            showStatus("❌ Camera error: " + e.message, true);
-            console.error("Fallback failed:", e);
-        }
+        console.error("Camera error:", err);
+        showStatus(`❌ Camera error: ${err.message}`, true);
+        // Add a retry button suggestion
+        const retryBtn = document.createElement('button');
+        retryBtn.innerText = "Retry Camera";
+        retryBtn.style.position = 'fixed';
+        retryBtn.style.bottom = '100px';
+        retryBtn.style.left = '50%';
+        retryBtn.style.transform = 'translateX(-50%)';
+        retryBtn.style.zIndex = '1000';
+        retryBtn.style.padding = '12px 24px';
+        retryBtn.style.background = '#1a73e8';
+        retryBtn.style.color = 'white';
+        retryBtn.style.border = 'none';
+        retryBtn.style.borderRadius = '40px';
+        retryBtn.onclick = () => {
+            retryBtn.remove();
+            setupCamera();
+        };
+        document.body.appendChild(retryBtn);
     }
 }
 
-// Quality check (same as before, but simplified)
+// Quality check (unchanged)
 function checkImageQuality(imageDataUrl) {
     return new Promise((resolve) => {
         const img = new Image();
@@ -80,7 +98,6 @@ function checkImageQuality(imageDataUrl) {
             const data = imageData.data;
             const w = canvas.width, h = canvas.height;
             
-            // Sharpness (Laplacian)
             let sum = 0, sumSq = 0;
             for (let y = 1; y < h-1; y++) {
                 for (let x = 1; x < w-1; x++) {
@@ -102,7 +119,6 @@ function checkImageQuality(imageDataUrl) {
             let variance = (sumSq/(w*h)) - Math.pow(sum/(w*h), 2);
             let isSharp = variance > 30;
             
-            // Brightness
             let totalLum = 0;
             for (let i=0; i<data.length; i+=4) {
                 totalLum += 0.2126*data[i] + 0.7152*data[i+1] + 0.0722*data[i+2];
@@ -120,10 +136,11 @@ function checkImageQuality(imageDataUrl) {
     });
 }
 
-// Capture full frame at native resolution
+// Capture full frame (uses actual video dimensions)
 async function captureFullFrame() {
     if (!video.videoWidth || !video.videoHeight) {
-        console.warn("Video dimensions not ready");
+        console.warn("Video dimensions not ready", video.videoWidth, video.videoHeight);
+        showStatus("Camera not ready. Wait a moment.", true);
         return null;
     }
     const canvas = document.createElement('canvas');
@@ -187,8 +204,8 @@ function enhanceImage(sourceCanvas) {
 }
 
 async function capturePage() {
-    if (!video.srcObject) {
-        showStatus("Camera not ready. Refresh page.", true);
+    if (!stream || !video.srcObject) {
+        showStatus("Camera not started. Please allow camera permission.", true);
         return;
     }
     showStatus(`📸 Capturing Page ${currentPage}...`);
@@ -275,9 +292,10 @@ submitBtn.onclick = sendToGemini;
 resetBtn.onclick = resetApp;
 closeModalBtn.onclick = () => resultModal.classList.add('hidden');
 
-// Start camera after page fully loads
+// Start camera when page is fully loaded
 window.addEventListener('load', setupCamera);
 
+// Cleanup
 window.addEventListener('beforeunload', () => {
     if (stream) {
         stream.getTracks().forEach(track => track.stop());
