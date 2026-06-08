@@ -13,16 +13,16 @@ const closeModalBtn = document.getElementById('closeModalBtn');
 let stream = null;
 let page1Image = null;
 let page2Image = null;
-let currentPage = 1;  // 1 or 2
+let currentPage = 1;
 
-// Helper to show temporary toasts
+// Toast helpers
 let statusTimeout, qualityTimeout;
 function showStatus(msg, isError = false) {
     if (statusTimeout) clearTimeout(statusTimeout);
     statusToast.style.opacity = '1';
     statusToast.innerText = msg;
     statusToast.style.background = isError ? 'rgba(200,50,50,0.9)' : 'rgba(0,0,0,0.8)';
-    statusTimeout = setTimeout(() => { statusToast.style.opacity = '0'; }, 2000);
+    statusTimeout = setTimeout(() => { statusToast.style.opacity = '0'; }, 2500);
 }
 function showQuality(msg) {
     if (qualityTimeout) clearTimeout(qualityTimeout);
@@ -31,45 +31,42 @@ function showQuality(msg) {
     qualityTimeout = setTimeout(() => { qualityToast.style.opacity = '0'; }, 2000);
 }
 
-// ---------- Camera Setup with HIGH RESOLUTION ----------
+// ---------- Camera Setup with fallback ----------
 async function setupCamera() {
     try {
-        // Request highest possible resolution from rear camera
+        // First try: high resolution with back camera
         const constraints = {
             video: {
-                facingMode: "environment",
-                width: { ideal: 4096 },  // request high width
-                height: { ideal: 2160 },
-                aspectRatio: { ideal: 1.3333 } // optional
+                facingMode: { exact: "environment" },
+                width: { min: 1280, ideal: 1920 },
+                height: { min: 720, ideal: 1080 }
             }
         };
         stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
         await video.play();
-        
-        // Log actual resolution to verify
         const track = stream.getVideoTracks()[0];
         const settings = track.getSettings();
-        console.log(`Camera resolution: ${settings.width}x${settings.height}`);
-        showStatus(`📷 High-res camera ready (${settings.width}×${settings.height})`);
+        console.log(`High-res camera: ${settings.width}x${settings.height}`);
+        showStatus(`📷 Camera ready (${settings.width}×${settings.height})`);
     } catch (err) {
-        // Fallback to default if high-res fails
-        console.warn("High-res request failed, using default:", err);
+        console.warn("High-res failed, falling back:", err);
         try {
-            stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: "environment" }
-            });
+            // Fallback: default environment camera
+            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
             video.srcObject = stream;
             await video.play();
-            showStatus("📷 Camera ready (standard resolution)");
+            const track = stream.getVideoTracks()[0];
+            const settings = track.getSettings();
+            showStatus(`📷 Camera ready (${settings.width}×${settings.height})`);
         } catch (e) {
             showStatus("❌ Camera error: " + e.message, true);
-            console.error(e);
+            console.error("Fallback failed:", e);
         }
     }
 }
 
-// ---------- Quality Check (sharpness + brightness) ----------
+// Quality check (same as before, but simplified)
 function checkImageQuality(imageDataUrl) {
     return new Promise((resolve) => {
         const img = new Image();
@@ -83,7 +80,7 @@ function checkImageQuality(imageDataUrl) {
             const data = imageData.data;
             const w = canvas.width, h = canvas.height;
             
-            // Sharpness (Laplacian variance)
+            // Sharpness (Laplacian)
             let sum = 0, sumSq = 0;
             for (let y = 1; y < h-1; y++) {
                 for (let x = 1; x < w-1; x++) {
@@ -123,18 +120,17 @@ function checkImageQuality(imageDataUrl) {
     });
 }
 
-// ---------- Capture Full Frame at NATIVE RESOLUTION ----------
+// Capture full frame at native resolution
 async function captureFullFrame() {
-    if (!video.videoWidth || !video.videoHeight) return null;
-    
-    // Capture current video frame at its actual resolution
+    if (!video.videoWidth || !video.videoHeight) {
+        console.warn("Video dimensions not ready");
+        return null;
+    }
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    // Enhance: contrast + brightness + sharpen
     const enhanced = await enhanceImage(canvas);
     return enhanced;
 }
@@ -147,7 +143,6 @@ function enhanceImage(sourceCanvas) {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(sourceCanvas, 0, 0);
         
-        // Contrast & brightness
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageData.data;
         const contrast = 1.4;
@@ -159,7 +154,6 @@ function enhanceImage(sourceCanvas) {
         }
         ctx.putImageData(imageData, 0, 0);
         
-        // Sharpen kernel
         const sharpenCanvas = document.createElement('canvas');
         sharpenCanvas.width = canvas.width;
         sharpenCanvas.height = canvas.height;
@@ -192,22 +186,23 @@ function enhanceImage(sourceCanvas) {
     });
 }
 
-// ---------- Capture Page Flow ----------
 async function capturePage() {
+    if (!video.srcObject) {
+        showStatus("Camera not ready. Refresh page.", true);
+        return;
+    }
     showStatus(`📸 Capturing Page ${currentPage}...`);
     const capturedDataUrl = await captureFullFrame();
     if (!capturedDataUrl) {
         showStatus("❌ Capture failed. Try again.", true);
         return;
     }
-    
     const quality = await checkImageQuality(capturedDataUrl);
     showQuality(quality.reason);
     if (!quality.isGood) {
         showStatus(`⚠️ Page ${currentPage} rejected. ${quality.reason}`, true);
         return;
     }
-    
     if (currentPage === 1) {
         page1Image = capturedDataUrl;
         scanPage1Btn.disabled = true;
@@ -226,7 +221,6 @@ async function capturePage() {
     }
 }
 
-// ---------- Send to Gemini API and Show Full-Screen Modal ----------
 async function sendToGemini() {
     if (!page1Image || !page2Image) {
         showStatus("❌ Both pages required.", true);
@@ -235,7 +229,6 @@ async function sendToGemini() {
     submitBtn.disabled = true;
     submitBtn.style.opacity = '0.5';
     showStatus("🤖 Sending to Gemini AI...");
-    
     try {
         const response = await fetch('/api/gemini', {
             method: 'POST',
@@ -271,7 +264,6 @@ function resetApp() {
     scanPage2Btn.style.opacity = '0.5';
     submitBtn.disabled = true;
     submitBtn.style.opacity = '0.5';
-    // Close modal if open
     resultModal.classList.add('hidden');
     showStatus("⟳ Reset. Ready for fresh scan.");
 }
@@ -283,10 +275,9 @@ submitBtn.onclick = sendToGemini;
 resetBtn.onclick = resetApp;
 closeModalBtn.onclick = () => resultModal.classList.add('hidden');
 
-// Start camera
-setupCamera();
+// Start camera after page fully loads
+window.addEventListener('load', setupCamera);
 
-// Cleanup on page unload
 window.addEventListener('beforeunload', () => {
     if (stream) {
         stream.getTracks().forEach(track => track.stop());
