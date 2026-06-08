@@ -18,7 +18,6 @@ export default async function handler(req, res) {
     const base64Page1 = page1.split(',')[1];
     const base64Page2 = page2.split(',')[1];
 
-    // New prompt: Solve the exam
     const prompt = `
 You are an expert exam solver. Look at the two exam page images. The pages contain **printed questions** (no handwritten answers). Your task is to **provide the correct answers** for every question.
 
@@ -38,43 +37,42 @@ A: [correct answer]
 
 Separate each Q/A pair with a blank line.
 
-**EXAMPLE:**
-Q: kochen →
-A: gekocht
-
-Q: Morgens macht er ein ______.
-A: Frühstück
-
-Q: Murat war in Bodrum. (Richtig/Falsch)
-A: Richtig
-
 **DO NOT** include any extra text, explanations, or commentary. Only the Q/A pairs.
-
-Now process the two exam page images.
 `;
 
-    const MODEL_NAME = 'models/gemini-2.0-flash'; // or gemini-2.5-flash
+    // Try different models in order (some may have quota left)
+    const modelsToTry = [
+        'models/gemini-2.5-flash',
+        'models/gemini-1.5-flash',
+        'models/gemini-2.0-flash-lite',
+        'models/gemini-3.1-flash-lite-preview'
+    ];
 
-    const requestBody = {
-        contents: [
-            {
-                parts: [
-                    { text: prompt },
-                    { inline_data: { mime_type: "image/jpeg", data: base64Page1 } },
-                    { inline_data: { mime_type: "image/jpeg", data: base64Page2 } }
-                ]
-            }
-        ],
-        generationConfig: {
-            temperature: 0.2,   // low for factual answers
-            maxOutputTokens: 4096,
-            topP: 0.9
+    async function callGemini(modelName, retryDelay = 0) {
+        if (retryDelay > 0) {
+            console.log(`Retrying with ${modelName} after ${retryDelay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
         }
-    };
 
-    try {
+        const requestBody = {
+            contents: [
+                {
+                    parts: [
+                        { text: prompt },
+                        { inline_data: { mime_type: "image/jpeg", data: base64Page1 } },
+                        { inline_data: { mime_type: "image/jpeg", data: base64Page2 } }
+                    ]
+                }
+            ],
+            generationConfig: {
+                temperature: 0.2,
+                maxOutputTokens: 4096,
+                topP: 0.9
+            }
+        };
+
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/${MODEL_NAME}:generateContent?key=${GEMINI_API_KEY}`,
+            `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${GEMINI_API_KEY}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -83,20 +81,57 @@ Now process the two exam page images.
         );
 
         const data = await response.json();
+
         if (!response.ok) {
-            console.error('Gemini error:', JSON.stringify(data, null, 2));
-            return res.status(response.status).json({ error: data.error?.message || 'Gemini API error' });
+            const errorMsg = data.error?.message || '';
+            // Check if it's a quota error (429)
+            if (response.status === 429 && errorMsg.includes('quota')) {
+                // Extract retry delay if provided
+                const retryMatch = errorMsg.match(/Please retry in ([\d.]+)s/);
+                const delay = retryMatch ? parseFloat(retryMatch[1]) * 1000 : 15000;
+                throw { isQuota: true, model: modelName, delay };
+            }
+            throw new Error(`Gemini API error: ${errorMsg}`);
         }
 
-        let extractedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!extractedText) {
-            return res.status(500).json({ error: 'Empty response from Gemini' });
-        }
-
-        extractedText = extractedText.replace(/```/g, '').trim();
-        return res.status(200).json({ extractedText });
-    } catch (error) {
-        console.error('Server error:', error);
-        return res.status(500).json({ error: 'Internal server error: ' + error.message });
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     }
+
+    // Try models with fallback
+    let lastError = null;
+    for (const model of modelsToTry) {
+        try {
+            console.log(`Trying model: ${model}`);
+            const extractedText = await callGemini(model);
+            if (extractedText) {
+                const cleaned = extractedText.replace(/```/g, '').trim();
+                return res.status(200).json({ extractedText: cleaned });
+            }
+        } catch (err) {
+            console.error(`Model ${model} failed:`, err);
+            lastError = err;
+            if (err.isQuota) {
+                // Quota error: wait and retry same model (once)
+                try {
+                    console.log(`Quota hit for ${model}, retrying after ${err.delay}ms...`);
+                    const extractedText = await callGemini(model, err.delay);
+                    if (extractedText) {
+                        const cleaned = extractedText.replace(/```/g, '').trim();
+                        return res.status(200).json({ extractedText: cleaned });
+                    }
+                } catch (retryErr) {
+                    console.error(`Retry failed for ${model}:`, retryErr);
+                    lastError = retryErr;
+                    continue;
+                }
+            } else {
+                // Non-quota error, try next model
+                continue;
+            }
+        }
+    }
+
+    // All models failed
+    const errorMsg = lastError?.message || 'All models failed due to quota or errors. Please try again later.';
+    return res.status(429).json({ error: errorMsg });
 }
