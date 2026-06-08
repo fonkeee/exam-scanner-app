@@ -24,6 +24,7 @@ function debugLog(...args) {
 // ========== Toast system ==========
 let toastTimeout = null;
 function showToast(message, duration = 3000, isError = false) {
+    debugLog("showToast:", message, duration, isError);
     let toast = document.getElementById('dynamicToast');
     if (!toast) {
         toast = document.createElement('div');
@@ -40,6 +41,7 @@ function showToast(message, duration = 3000, isError = false) {
 }
 
 function setStatus(msg, isError = false) {
+    debugLog("setStatus:", msg, isError);
     statusMsg.innerText = msg;
     statusMsg.style.background = isError ? 'rgba(200,50,50,0.9)' : 'rgba(0,0,0,0.7)';
     if (!isError) {
@@ -51,6 +53,7 @@ function setStatus(msg, isError = false) {
 
 // ========== Camera Setup ==========
 async function setupCamera() {
+    debugLog("setupCamera called");
     setStatus("Requesting camera...");
     try {
         const constraints = { video: { facingMode: "environment" } };
@@ -69,112 +72,124 @@ async function setupCamera() {
     }
 }
 
-// ========== Resize & Compress Image (to avoid payload too large) ==========
-async function resizeAndCompress(imageDataUrl, maxWidth = 1500, quality = 0.85) {
+// ========== Image enhancement with lower quality for mobile ==========
+function enhanceImage(sourceCanvas) {
     return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => {
-            let width = img.width;
-            let height = img.height;
-            if (width > maxWidth) {
-                height = (height * maxWidth) / width;
-                width = maxWidth;
-            }
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            // Apply enhancement (contrast, sharpen) after resize
-            const imageData = ctx.getImageData(0, 0, width, height);
-            const data = imageData.data;
-            const contrast = 1.4;
-            const brightness = 10;
-            for (let i = 0; i < data.length; i += 4) {
-                data[i] = Math.min(255, Math.max(0, (data[i] - 128) * contrast + 128 + brightness));
-                data[i+1] = Math.min(255, Math.max(0, (data[i+1] - 128) * contrast + 128 + brightness));
-                data[i+2] = Math.min(255, Math.max(0, (data[i+2] - 128) * contrast + 128 + brightness));
-            }
-            ctx.putImageData(imageData, 0, 0);
-            
-            // Simple sharpen
-            const sharpenCanvas = document.createElement('canvas');
-            sharpenCanvas.width = width;
-            sharpenCanvas.height = height;
-            const sCtx = sharpenCanvas.getContext('2d');
-            sCtx.drawImage(canvas, 0, 0);
-            const src = sCtx.getImageData(0, 0, width, height);
-            const dst = sCtx.createImageData(width, height);
-            const kernel = [-1, -1, -1, -1, 9, -1, -1, -1, -1];
-            for (let y = 1; y < height-1; y++) {
-                for (let x = 1; x < width-1; x++) {
-                    let r = 0, g = 0, b = 0;
-                    for (let ky = -1; ky <= 1; ky++) {
-                        for (let kx = -1; kx <= 1; kx++) {
-                            const idx = ((y+ky)*width + (x+kx))*4;
-                            const w = kernel[(ky+1)*3 + (kx+1)];
-                            r += src.data[idx] * w;
-                            g += src.data[idx+1] * w;
-                            b += src.data[idx+2] * w;
-                        }
+        debugLog("Enhancing image...");
+        const canvas = document.createElement('canvas');
+        // Reduce size for mobile to avoid large payloads
+        const maxWidth = 1200;
+        const maxHeight = 1600;
+        let width = sourceCanvas.width;
+        let height = sourceCanvas.height;
+        if (width > maxWidth || height > maxHeight) {
+            const ratio = Math.min(maxWidth / width, maxHeight / height);
+            width = Math.floor(width * ratio);
+            height = Math.floor(height * ratio);
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(sourceCanvas, 0, 0, width, height);
+        
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const data = imageData.data;
+        const contrast = 1.5;
+        const brightness = 10;
+        for (let i = 0; i < data.length; i += 4) {
+            data[i] = Math.min(255, Math.max(0, (data[i] - 128) * contrast + 128 + brightness));
+            data[i+1] = Math.min(255, Math.max(0, (data[i+1] - 128) * contrast + 128 + brightness));
+            data[i+2] = Math.min(255, Math.max(0, (data[i+2] - 128) * contrast + 128 + brightness));
+        }
+        ctx.putImageData(imageData, 0, 0);
+        
+        // Light sharpen
+        const sharpenCanvas = document.createElement('canvas');
+        sharpenCanvas.width = width;
+        sharpenCanvas.height = height;
+        const sCtx = sharpenCanvas.getContext('2d');
+        sCtx.drawImage(canvas, 0, 0);
+        const src = sCtx.getImageData(0, 0, width, height);
+        const dst = sCtx.createImageData(width, height);
+        const kernel = [0, -1, 0, -1, 5, -1, 0, -1, 0];
+        for (let y = 1; y < height-1; y++) {
+            for (let x = 1; x < width-1; x++) {
+                let r = 0, g = 0, b = 0;
+                for (let ky = -1; ky <= 1; ky++) {
+                    for (let kx = -1; kx <= 1; kx++) {
+                        const idx = ((y+ky)*width + (x+kx))*4;
+                        const w = kernel[(ky+1)*3 + (kx+1)];
+                        r += src.data[idx] * w;
+                        g += src.data[idx+1] * w;
+                        b += src.data[idx+2] * w;
                     }
-                    const didx = (y*width + x)*4;
-                    dst.data[didx] = Math.min(255, Math.max(0, r));
-                    dst.data[didx+1] = Math.min(255, Math.max(0, g));
-                    dst.data[didx+2] = Math.min(255, Math.max(0, b));
-                    dst.data[didx+3] = src.data[(y*width + x)*4 + 3];
                 }
+                const didx = (y*width + x)*4;
+                dst.data[didx] = Math.min(255, Math.max(0, r));
+                dst.data[didx+1] = Math.min(255, Math.max(0, g));
+                dst.data[didx+2] = Math.min(255, Math.max(0, b));
+                dst.data[didx+3] = src.data[(y*width + x)*4 + 3];
             }
-            sCtx.putImageData(dst, 0, 0);
-            resolve(sharpenCanvas.toDataURL('image/jpeg', quality));
-        };
-        img.src = imageDataUrl;
+        }
+        sCtx.putImageData(dst, 0, 0);
+        // Lower quality to reduce payload for mobile
+        resolve(sharpenCanvas.toDataURL('image/jpeg', 0.8));
+        debugLog("Image enhancement done, size reduced");
     });
 }
 
-// Capture from camera (with resize)
 async function captureFullFrame() {
     if (!video.videoWidth || !video.videoHeight) {
+        debugLog("Video dimensions not ready");
         return null;
     }
+    debugLog("Capturing full frame", video.videoWidth, video.videoHeight);
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const rawDataUrl = canvas.toDataURL('image/jpeg', 0.9);
-    const compressed = await resizeAndCompress(rawDataUrl, 1500, 0.85);
-    return compressed;
+    return await enhanceImage(canvas);
 }
 
-// ========== File upload handler (with resize) ==========
-async function handleUpload(event) {
+// ========== File upload handler ==========
+function handleUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
+    debugLog("Uploading file:", file.name, file.type, file.size);
     showToast("Processing uploaded image...", 2000);
     const reader = new FileReader();
-    reader.onload = async (e) => {
+    reader.onload = async function(e) {
         const dataUrl = e.target.result;
-        const compressed = await resizeAndCompress(dataUrl, 1500, 0.85);
-        if (currentPage === 1) {
-            page1Image = compressed;
-            scanPage1Btn.disabled = true;
-            scanPage1Btn.style.opacity = '0.5';
-            scanPage2Btn.disabled = false;
-            scanPage2Btn.style.opacity = '1';
-            currentPage = 2;
-            setStatus("✅ Page 1 uploaded. Now upload Page 2.");
-            showToast("Page 1 uploaded! Now upload Page 2.", 2000);
-        } else if (currentPage === 2) {
-            page2Image = compressed;
-            scanPage2Btn.disabled = true;
-            scanPage2Btn.style.opacity = '0.5';
-            submitBtn.disabled = false;
-            submitBtn.style.opacity = '1';
-            setStatus("✅ Page 2 uploaded. Ready to extract.");
-            showToast("Page 2 uploaded! Tap Extract.", 2000);
-        }
+        debugLog("File loaded, dataURL length:", dataUrl.length);
+        const img = new Image();
+        img.onload = async () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            const enhanced = await enhanceImage(canvas);
+            if (currentPage === 1) {
+                page1Image = enhanced;
+                scanPage1Btn.disabled = true;
+                scanPage1Btn.style.opacity = '0.5';
+                scanPage2Btn.disabled = false;
+                scanPage2Btn.style.opacity = '1';
+                currentPage = 2;
+                setStatus("✅ Page 1 uploaded. Now upload Page 2.");
+                showToast("Page 1 uploaded! Now upload Page 2.", 2000);
+            } else {
+                page2Image = enhanced;
+                scanPage2Btn.disabled = true;
+                scanPage2Btn.style.opacity = '0.5';
+                submitBtn.disabled = false;
+                submitBtn.style.opacity = '1';
+                setStatus("✅ Page 2 uploaded. Ready to extract.");
+                showToast("Page 2 uploaded! Tap Extract.", 2000);
+            }
+        };
+        img.src = dataUrl;
     };
     reader.readAsDataURL(file);
     uploadInput.value = '';
@@ -187,6 +202,7 @@ async function capturePage() {
         showToast("Camera not ready. Please refresh.", 3000, true);
         return;
     }
+    debugLog("capturePage called, currentPage:", currentPage);
     setStatus(`Capturing Page ${currentPage}...`);
     const captured = await captureFullFrame();
     if (!captured) {
@@ -214,13 +230,14 @@ async function capturePage() {
     }
 }
 
-// ========== Send to Gemini with better error logging ==========
+// ========== Send to Gemini with robust error handling ==========
 async function sendToGemini() {
     if (!page1Image || !page2Image) {
         setStatus("Both pages required.", true);
         showToast("Please capture or upload both pages first.", 2500, true);
         return;
     }
+    debugLog("sendToGemini called");
     submitBtn.disabled = true;
     submitBtn.style.opacity = '0.5';
     setStatus("Sending to Gemini AI...");
@@ -239,36 +256,40 @@ async function sendToGemini() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ page1: page1Image, page2: page2Image })
         });
+        
         // Check if response is JSON
         const contentType = response.headers.get('content-type');
         if (!contentType || !contentType.includes('application/json')) {
             const text = await response.text();
-            console.error("Non-JSON response:", text.substring(0, 200));
+            debugLog("Non-JSON response:", text.substring(0, 200));
             throw new Error(`Server returned ${response.status}: ${text.substring(0, 100)}`);
         }
+        
         const data = await response.json();
         clearInterval(interval);
         if (response.ok) {
+            debugLog("Gemini success, response length:", data.extractedText?.length);
             resultText.innerText = data.extractedText;
             resultModal.classList.remove('hidden');
             setStatus("✅ Extraction complete!");
             showToast("✅ Answers extracted! Check the modal.", 3000);
         } else {
+            debugLog("Gemini error:", data.error);
             const errorMsg = data.error || "Unknown error";
             setStatus("❌ Gemini error: " + errorMsg, true);
             showToast("❌ " + errorMsg, 8000, true);
         }
     } catch (err) {
         clearInterval(interval);
-        console.error("Network error:", err);
+        debugLog("Network/JSON error:", err);
         setStatus("❌ Network error: " + err.message, true);
-        showToast("Network error: " + err.message, 5000, true);
+        showToast("Error: " + err.message, 5000, true);
     } finally {
         submitBtn.disabled = false;
         submitBtn.style.opacity = '1';
         setTimeout(() => {
             const toast = document.getElementById('dynamicToast');
-            if (toast && toast.innerText.startsWith('⏳')) {
+            if (toast && toast.innerText && toast.innerText.startsWith('⏳')) {
                 toast.style.opacity = '0';
             }
         }, 500);
@@ -276,6 +297,7 @@ async function sendToGemini() {
 }
 
 function resetApp() {
+    debugLog("resetApp");
     page1Image = null;
     page2Image = null;
     currentPage = 1;
@@ -290,7 +312,7 @@ function resetApp() {
     showToast("Reset. You can start over.", 1500);
 }
 
-// ========== Event listeners ==========
+// Event listeners
 scanPage1Btn.onclick = capturePage;
 scanPage2Btn.onclick = capturePage;
 submitBtn.onclick = sendToGemini;
