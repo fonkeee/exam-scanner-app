@@ -40,9 +40,9 @@ Separate each Q/A pair with a blank line.
 **DO NOT** include any extra text, explanations, or commentary. Only the Q/A pairs.
 `;
 
-    // New models order: newest and more likely to have free quota first
+    // Priority order: newest models first (higher chance of free quota)
     const modelsToTry = [
-        'models/gemini-3.1-flash-lite-preview',  // newest as of 2026
+        'models/gemini-3.1-flash-lite-preview',
         'models/gemini-3-flash-preview',
         'models/gemini-2.5-flash',
         'models/gemini-2.0-flash-lite',
@@ -110,7 +110,6 @@ Separate each Q/A pair with a blank line.
             console.error(`[Gemini] Error with ${model}:`, err);
             lastError = err;
             if (err.isQuota) {
-                // Retry same model once after delay
                 try {
                     console.log(`[Gemini] Quota for ${model}, retrying after ${err.delay}ms`);
                     const extractedText = await callGemini(model, err.delay);
