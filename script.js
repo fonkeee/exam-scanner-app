@@ -6,9 +6,9 @@ const submitBtn = document.getElementById('submitBtn');
 const resetBtn = document.getElementById('resetBtn');
 const statusToast = document.getElementById('statusToast');
 const qualityToast = document.getElementById('qualityToast');
-const resultPanel = document.getElementById('resultPanel');
-const resultContent = document.getElementById('resultContent');
-const closeResultBtn = document.getElementById('closeResultBtn');
+const resultModal = document.getElementById('resultModal');
+const resultText = document.getElementById('resultText');
+const closeModalBtn = document.getElementById('closeModalBtn');
 
 let stream = null;
 let page1Image = null;
@@ -31,18 +31,41 @@ function showQuality(msg) {
     qualityTimeout = setTimeout(() => { qualityToast.style.opacity = '0'; }, 2000);
 }
 
-// ---------- Camera Setup (full screen) ----------
+// ---------- Camera Setup with HIGH RESOLUTION ----------
 async function setupCamera() {
     try {
-        stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "environment" } // rear camera
-        });
+        // Request highest possible resolution from rear camera
+        const constraints = {
+            video: {
+                facingMode: "environment",
+                width: { ideal: 4096 },  // request high width
+                height: { ideal: 2160 },
+                aspectRatio: { ideal: 1.3333 } // optional
+            }
+        };
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
         await video.play();
-        showStatus("📷 Camera ready. Position exam page.");
+        
+        // Log actual resolution to verify
+        const track = stream.getVideoTracks()[0];
+        const settings = track.getSettings();
+        console.log(`Camera resolution: ${settings.width}x${settings.height}`);
+        showStatus(`📷 High-res camera ready (${settings.width}×${settings.height})`);
     } catch (err) {
-        showStatus("❌ Camera error: " + err.message, true);
-        console.error(err);
+        // Fallback to default if high-res fails
+        console.warn("High-res request failed, using default:", err);
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: "environment" }
+            });
+            video.srcObject = stream;
+            await video.play();
+            showStatus("📷 Camera ready (standard resolution)");
+        } catch (e) {
+            showStatus("❌ Camera error: " + e.message, true);
+            console.error(e);
+        }
     }
 }
 
@@ -100,11 +123,11 @@ function checkImageQuality(imageDataUrl) {
     });
 }
 
-// ---------- Capture Full Frame + Enhancement ----------
+// ---------- Capture Full Frame at NATIVE RESOLUTION ----------
 async function captureFullFrame() {
-    if (!video.videoWidth) return null;
+    if (!video.videoWidth || !video.videoHeight) return null;
     
-    // Capture current video frame
+    // Capture current video frame at its actual resolution
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -165,7 +188,7 @@ function enhanceImage(sourceCanvas) {
             }
         }
         sCtx.putImageData(dst, 0, 0);
-        resolve(sharpenCanvas.toDataURL('image/jpeg', 0.85));
+        resolve(sharpenCanvas.toDataURL('image/jpeg', 0.92));
     });
 }
 
@@ -203,7 +226,7 @@ async function capturePage() {
     }
 }
 
-// ---------- Send to Gemini API ----------
+// ---------- Send to Gemini API and Show Full-Screen Modal ----------
 async function sendToGemini() {
     if (!page1Image || !page2Image) {
         showStatus("❌ Both pages required.", true);
@@ -221,13 +244,13 @@ async function sendToGemini() {
         });
         const data = await response.json();
         if (response.ok) {
-            resultContent.innerText = data.extractedText;
-            resultPanel.classList.add('show');
+            resultText.innerText = data.extractedText;
+            resultModal.classList.remove('hidden');
             showStatus("✅ Extraction complete!");
         } else {
             showStatus("❌ Gemini error: " + (data.error || "Unknown"), true);
-            resultContent.innerText = "Error: " + (data.error || "Unknown");
-            resultPanel.classList.add('show');
+            resultText.innerText = "Error: " + (data.error || "Unknown");
+            resultModal.classList.remove('hidden');
         }
     } catch (err) {
         showStatus("❌ Network error: " + err.message, true);
@@ -248,7 +271,8 @@ function resetApp() {
     scanPage2Btn.style.opacity = '0.5';
     submitBtn.disabled = true;
     submitBtn.style.opacity = '0.5';
-    resultPanel.classList.remove('show');
+    // Close modal if open
+    resultModal.classList.add('hidden');
     showStatus("⟳ Reset. Ready for fresh scan.");
 }
 
@@ -257,7 +281,7 @@ scanPage1Btn.onclick = capturePage;
 scanPage2Btn.onclick = capturePage;
 submitBtn.onclick = sendToGemini;
 resetBtn.onclick = resetApp;
-closeResultBtn.onclick = () => resultPanel.classList.remove('show');
+closeModalBtn.onclick = () => resultModal.classList.add('hidden');
 
 // Start camera
 setupCamera();
