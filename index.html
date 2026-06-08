@@ -3,27 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Exam Scanner Pro - Document Guide</title>
+    <title>Exam Scanner • Dark Mode</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <h1>📄 Exam Scanner Pro</h1>
-        <div class="camera-wrapper">
-            <video id="cameraFeed" autoplay playsinline muted></video>
-            <canvas id="guideCanvas"></canvas> <!-- Fixed rectangle guide -->
+    <div class="camera-container">
+        <video id="cameraFeed" autoplay playsinline muted></video>
+        
+        <!-- Bottom Tab Bar -->
+        <div class="bottom-tab-bar">
+            <button id="scanPage1Btn" class="tab-btn primary">
+                <span class="icon">📸</span>
+                <span class="label">Page 1</span>
+            </button>
+            <button id="scanPage2Btn" class="tab-btn secondary" disabled>
+                <span class="icon">📄</span>
+                <span class="label">Page 2</span>
+            </button>
+            <button id="submitBtn" class="tab-btn success" disabled>
+                <span class="icon">✨</span>
+                <span class="label">Extract</span>
+            </button>
+            <button id="resetBtn" class="tab-btn reset">
+                <span class="icon">⟳</span>
+                <span class="label">Reset</span>
+            </button>
         </div>
+    </div>
 
-        <div class="controls">
-            <button id="scanPage1Btn" class="btn primary">📸 Scan Page 1</button>
-            <button id="scanPage2Btn" class="btn secondary" disabled>📸 Scan Page 2</button>
-            <button id="submitBtn" class="btn success" disabled>✨ Send to Gemini AI</button>
-            <button id="resetBtn" class="btn reset">⟳ Reset</button>
+    <!-- Status overlays (toast style) -->
+    <div id="statusToast" class="status-toast">📷 Ready</div>
+    <div id="qualityToast" class="quality-toast"></div>
+    <div id="resultPanel" class="result-panel hidden">
+        <div class="result-header">
+            <span>📝 Extracted Q&A</span>
+            <button id="closeResultBtn" class="close-btn">✕</button>
         </div>
-
-        <div id="status" class="status"></div>
-        <div id="qualityFeedback" class="quality-feedback"></div>
-        <div id="result" class="result" style="display:none;"></div>
+        <div id="resultContent" class="result-content"></div>
     </div>
 
     <script src="script.js"></script>
