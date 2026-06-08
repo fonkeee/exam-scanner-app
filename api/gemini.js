@@ -40,20 +40,21 @@ Separate each Q/A pair with a blank line.
 **DO NOT** include any extra text, explanations, or commentary. Only the Q/A pairs.
 `;
 
-    // Try different models in order (some may have quota left)
+    // New models order: newest and more likely to have free quota first
     const modelsToTry = [
+        'models/gemini-3.1-flash-lite-preview',  // newest as of 2026
+        'models/gemini-3-flash-preview',
         'models/gemini-2.5-flash',
-        'models/gemini-1.5-flash',
         'models/gemini-2.0-flash-lite',
-        'models/gemini-3.1-flash-lite-preview'
+        'models/gemini-1.5-flash'
     ];
 
     async function callGemini(modelName, retryDelay = 0) {
         if (retryDelay > 0) {
-            console.log(`Retrying with ${modelName} after ${retryDelay}ms...`);
+            console.log(`[Gemini] Retry ${modelName} after ${retryDelay}ms`);
             await new Promise(resolve => setTimeout(resolve, retryDelay));
         }
-
+        console.log(`[Gemini] Trying model: ${modelName}`);
         const requestBody = {
             contents: [
                 {
@@ -81,57 +82,53 @@ Separate each Q/A pair with a blank line.
         );
 
         const data = await response.json();
-
         if (!response.ok) {
             const errorMsg = data.error?.message || '';
-            // Check if it's a quota error (429)
+            console.error(`[Gemini] Model ${modelName} failed:`, errorMsg);
             if (response.status === 429 && errorMsg.includes('quota')) {
-                // Extract retry delay if provided
                 const retryMatch = errorMsg.match(/Please retry in ([\d.]+)s/);
                 const delay = retryMatch ? parseFloat(retryMatch[1]) * 1000 : 15000;
                 throw { isQuota: true, model: modelName, delay };
             }
-            throw new Error(`Gemini API error: ${errorMsg}`);
+            throw new Error(`Gemini error: ${errorMsg}`);
         }
-
-        return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        console.log(`[Gemini] Model ${modelName} success, response length: ${text.length}`);
+        return text;
     }
 
-    // Try models with fallback
     let lastError = null;
     for (const model of modelsToTry) {
         try {
-            console.log(`Trying model: ${model}`);
             const extractedText = await callGemini(model);
             if (extractedText) {
                 const cleaned = extractedText.replace(/```/g, '').trim();
+                console.log(`[Gemini] Final success with ${model}`);
                 return res.status(200).json({ extractedText: cleaned });
             }
         } catch (err) {
-            console.error(`Model ${model} failed:`, err);
+            console.error(`[Gemini] Error with ${model}:`, err);
             lastError = err;
             if (err.isQuota) {
-                // Quota error: wait and retry same model (once)
+                // Retry same model once after delay
                 try {
-                    console.log(`Quota hit for ${model}, retrying after ${err.delay}ms...`);
+                    console.log(`[Gemini] Quota for ${model}, retrying after ${err.delay}ms`);
                     const extractedText = await callGemini(model, err.delay);
                     if (extractedText) {
                         const cleaned = extractedText.replace(/```/g, '').trim();
                         return res.status(200).json({ extractedText: cleaned });
                     }
                 } catch (retryErr) {
-                    console.error(`Retry failed for ${model}:`, retryErr);
+                    console.error(`[Gemini] Retry failed for ${model}:`, retryErr);
                     lastError = retryErr;
                     continue;
                 }
             } else {
-                // Non-quota error, try next model
                 continue;
             }
         }
     }
-
-    // All models failed
-    const errorMsg = lastError?.message || 'All models failed due to quota or errors. Please try again later.';
+    console.error('[Gemini] All models exhausted');
+    const errorMsg = lastError?.message || 'All models failed. Please try again later.';
     return res.status(429).json({ error: errorMsg });
 }
