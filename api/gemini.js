@@ -1,6 +1,5 @@
 // api/gemini.js
 export default async function handler(req, res) {
-    // Only allow POST requests
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
@@ -12,32 +11,43 @@ export default async function handler(req, res) {
 
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
     if (!GEMINI_API_KEY) {
-        console.error('Missing GEMINI_API_KEY environment variable');
-        return res.status(500).json({ error: 'Server configuration error: missing API key' });
+        console.error('Missing GEMINI_API_KEY');
+        return res.status(500).json({ error: 'Missing API key' });
     }
 
-    // Extract base64 data (remove the "data:image/jpeg;base64," prefix)
+    // Extract base64
     const base64Page1 = page1.split(',')[1];
     const base64Page2 = page2.split(',')[1];
 
-    // The prompt that forces only questions and answers extraction
+    // Smarter prompt – understands handwriting, implicit answers, and infers missing info
     const prompt = `
-You are an AI assistant specialized in extracting exam content.
-Look at the two exam page images provided. 
-Extract **only the questions and their corresponding answers** from these pages.
-- Ignore any headers, footers, page numbers, instructions like "Please answer all questions" or "Total marks".
-- Ignore any teacher's notes or extraneous text.
-- If a question has multiple parts (a, b, c), include them.
-- If a question has no answer written, write "Answer missing".
-- Output in a clean, readable format, for example:
-    Question 1: [text of question]
-    Answer 1: [text of answer]
-    Question 2: ...
-- Do not include any additional commentary, explanations, or meta-commentary.
+You are an expert exam grader. Look at the two exam page images. Extract every question and the student's answer.
+
+RULES:
+- Questions may be numbered (1., 2., etc.) or unnumbered.
+- Answers may be written:
+  * Directly after the question on the same line.
+  * Below the question (handwritten or typed).
+  * In a separate answer area or blank space.
+  * Sometimes partially written or abbreviated – do your best to interpret.
+- If an answer is clearly missing (blank), write "[No answer given]".
+- DO NOT say "Answer missing" unless the space is completely blank and there's no attempt.
+- If the answer is implicit (e.g., a circled option or a checkmark), describe it, e.g., "Circled option B".
+- Output format: For each question, show "Q: [question text]" then "A: [answer text]". Separate pairs with blank lines.
+
+Be thorough. If a question has sub-questions (a, b, c), list them as Q1a, Q1b, etc.
+
+EXAMPLE OUTPUT:
+Q: What is the capital of France?
+A: Paris
+
+Q: Solve for x: 2x + 3 = 7
+A: x = 2
+
+Now process the two provided exam page images.
 `;
 
-    // Use a model that exists in your list: gemini-2.0-flash-lite (fast, stable, free)
-    const MODEL_NAME = 'models/gemini-3.1-flash-lite-preview';
+    const MODEL_NAME = 'models/gemini-2.5-flash'; // or any working model
 
     const requestBody = {
         contents: [
@@ -50,15 +60,13 @@ Extract **only the questions and their corresponding answers** from these pages.
             }
         ],
         generationConfig: {
-            temperature: 0.2,   // low temperature = more deterministic, factual
-            maxOutputTokens: 2048,
-            topP: 0.95,
-            topK: 40
+            temperature: 0.3,  // slightly higher to allow interpretation
+            maxOutputTokens: 4096,
+            topP: 0.95
         }
     };
 
     try {
-        console.log(`Using model: ${MODEL_NAME}`);
         const response = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/${MODEL_NAME}:generateContent?key=${GEMINI_API_KEY}`,
             {
@@ -69,23 +77,19 @@ Extract **only the questions and their corresponding answers** from these pages.
         );
 
         const data = await response.json();
-
         if (!response.ok) {
-            console.error('Gemini API error details:', JSON.stringify(data, null, 2));
-            const errorMessage = data.error?.message || 'Unknown error from Gemini API';
-            return res.status(response.status).json({ error: `Gemini API error: ${errorMessage}` });
+            console.error('Gemini error:', JSON.stringify(data, null, 2));
+            return res.status(response.status).json({ error: data.error?.message || 'Gemini API error' });
         }
 
-        // Extract the generated text
         const extractedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!extractedText) {
-            console.error('Unexpected Gemini response structure:', JSON.stringify(data, null, 2));
-            return res.status(500).json({ error: 'Gemini returned an empty or unexpected response' });
+            return res.status(500).json({ error: 'Empty response from Gemini' });
         }
 
         return res.status(200).json({ extractedText });
     } catch (error) {
-        console.error('Server error calling Gemini:', error);
+        console.error('Server error:', error);
         return res.status(500).json({ error: 'Internal server error: ' + error.message });
     }
 }
