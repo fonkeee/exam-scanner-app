@@ -1,4 +1,4 @@
-// api/gemini.js
+// api/gemini.js - Ultra strict version
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
@@ -20,39 +20,40 @@ export default async function handler(req, res) {
 
     const prompt = `You are an expert German examiner. The user provides two images of an exam. Your task is to answer every question correctly.
 
-**STRICT RULES – FOLLOW EXACTLY:**
+**ABSOLUTE RULES – VIOLATION WILL BE REJECTED:**
 
-1. **Copy the question text EXACTLY as printed**, including:
-   - Numbers (2., 3., 4., 6.)
-   - Letters (a., b., c.)
-   - Punctuation (colons, periods, blank lines like "_____")
-   - True/false statements: copy them word‑for‑word. Do NOT change any word (e.g., do not replace "Bodrum" with "Istanbul").
-   - Fill‑in‑the‑blanks: keep the blank as "_____" or "______________".
+1. **Copy every question EXACTLY as it appears in the image.** Do NOT change any word, number, letter, or punctuation.
+   - If the printed text says "die Zwiebeln dazugeben", you must write "die Zwiebeln dazugeben". Do NOT change it to "schälen".
+   - If the printed text says "Murat war in Bodrum.", you must write "Murat war in Bodrum." Do NOT change it to "Istanbul".
 
-2. On the next line write "A: " followed by the correct answer.
+2. **For each question, write the correct answer on the next line starting with "A: ".**
 
 3. **Answer formats:**
-   - Imperative (Sie‑form): Use "Geben Sie", "Schälen Sie", etc.
-   - Perfect tense: Provide the past participle (gekocht, gebacken, geschnitten, getrunken, gegessen).
-   - True/false: Exactly "Richtig" or "Falsch".
-   - Fill‑in‑the‑blanks: Insert the correct word from the provided list.
+   - Imperative (Sie-form): For "dazugeben", write "Geben Sie die Zwiebeln dazu."
+   - Perfect tense: Use past participles (gekocht, gebacken, geschnitten, getrunken, gegessen).
+   - True/false: Write exactly "Richtig" or "Falsch".
+   - Fill-in-the-blanks: Insert the correct word from the given list.
 
-4. **Do NOT add extra text**, markdown, or commentary. Do NOT change the order of questions.
+4. **Do NOT add any extra text, explanations, or markdown. Do NOT reorder questions.**
 
 5. Separate each Q/A pair with exactly one blank line.
 
-**EXAMPLE OF CORRECT TRUE/FALSE OUTPUT:**
+**EXAMPLES OF CORRECT OUTPUT:**
+2. Schreiben Sie die Sätze in der Imperativ-Sie-Form auf.
+a. die Zwiebeln dazugeben
+A: Geben Sie die Zwiebeln dazu.
+
+b. die Kartoffeln schälen
+A: Schälen Sie die Kartoffeln.
+
 Murat war in Bodrum.
 A: Richtig
 
-Er war allein dort.
-A: Falsch
+**EXAMPLES OF INCORRECT OUTPUT (DO NOT DO THIS):**
+Murat war in Istanbul.   (WRONG – changed city)
+a. die Zwiebeln schälen   (WRONG – changed verb)
 
-**EXAMPLE OF INCORRECT (DO NOT DO THIS):**
-Murat war in Istanbul.
-A: Falsch
-
-**Now process the two exam page images. Follow the format exactly. Output only the questions and answers – nothing else.**`;
+Now process the two exam page images. Follow the format exactly. I will check your output for exact matches.`;
 
     const requestBody = {
         model: GROQ_MODEL,
@@ -67,7 +68,8 @@ A: Falsch
             }
         ],
         max_tokens: 4096,
-        temperature: 0.1
+        temperature: 0.0,  // Zero temperature for maximum determinism
+        top_p: 0.9
     };
 
     try {
@@ -91,11 +93,7 @@ A: Falsch
             return res.status(500).json({ error: 'Empty response from Groq' });
         }
 
-        // Post‑process: remove any stray markdown or extra spaces
         extractedText = extractedText.replace(/```/g, '').trim();
-        // Ensure there's a blank line between Q/A pairs (but keep original spacing)
-        extractedText = extractedText.replace(/\n\n+/g, '\n\n');
-
         return res.status(200).json({ extractedText });
     } catch (error) {
         console.error('Server error:', error);
