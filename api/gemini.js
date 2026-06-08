@@ -18,32 +18,32 @@ export default async function handler(req, res) {
     const GROQ_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
     const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
-    const prompt = `You are an expert German language examiner. The user provides images of an exam. Your task is to answer every question correctly.
+    const prompt = `You are an expert German examiner. The user provides two images of an exam. Your task is to answer every question correctly.
 
-**CRITICAL RULES:**
-- Output the question text exactly as printed (including numbers, letters a., b., etc.).
+**STRICT RULES:**
+- Copy the question text **exactly** as it appears (including numbers, letters a./b./c., punctuation, and blank lines like "_____").
 - On the next line write "A: " followed by the correct answer.
-- No extra text, no markdown (no **, no ##, no *).
-- For imperative (Imperativ) questions: Use the formal "Sie" form.
-    - Example: "die Zwiebeln dazugeben" → "Geben Sie die Zwiebeln dazu."
+- Do NOT change the wording of the question. Do NOT add extra text like "Murat war in den Sommerferien in Istanbul" if the original says "Murat war in Bodrum."
+- For true/false statements: output exactly "Richtig" or "Falsch".
+- For imperative (Imperativ) with "Sie": use the formal "Sie" form. Examples:
+    - "die Zwiebeln dazugeben" → "Geben Sie die Zwiebeln dazu."
     - "die Kartoffeln schälen" → "Schälen Sie die Kartoffeln."
-    - "den Kuchen backen" → "Backen Sie den Kuchen."
-    - "die Suppe kochen" → "Kochen Sie die Suppe."
-    - "den Salat mischen" → "Mischen Sie den Salat."
-- For perfect tense (Perfekt): Provide the past participle.
-    - kochen → gekocht, backen → gebacken, schneiden → geschnitten, trinken → getrunken, essen → gegessen.
-- For true/false: "Richtig" or "Falsch".
-- For fill-in-the-blanks: Insert the correct word from the given list.
-- Preserve the original numbering and sub‑letters (a., b., c., etc.).
-- Separate each Q/A pair with exactly one blank line.
+- For perfect tense (Perfekt): output the past participle (e.g., "gekocht", "gebacken").
+- For fill‑in‑the‑blanks: insert the correct word from the provided list.
+- Preserve the original numbering and sub‑letters (a., b., etc.).
+- Separate each question-answer pair with one blank line.
+- No markdown, no extra commentary.
 
-**EXAMPLE OUTPUT:**
-2. Schreiben Sie die Sätze in der Imperativ-Sie-Form auf.
+**EXAMPLE OUTPUT (true/false):**
+Murat war in Bodrum.
+A: Richtig
+
+Er war allein dort.
+A: Falsch
+
+**EXAMPLE OUTPUT (imperative):**
 a. die Zwiebeln dazugeben
 A: Geben Sie die Zwiebeln dazu.
-
-b. die Kartoffeln schälen
-A: Schälen Sie die Kartoffeln.
 
 Now process the two exam page images. Follow the format exactly.`;
 
